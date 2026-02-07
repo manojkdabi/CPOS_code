@@ -1,0 +1,2043 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CP-OS v1.0 DSS</title>
+
+
+
+  <!-- ✅ DROP-IN REPLACEMENT: Replace your entire <style>...</style> block with this -->
+  <style>
+    :root {
+      /* ===== CP-OS screenshot palette (colors only) ===== */
+      --bg: #f5f6fb;
+
+      --surface: #ffffff;
+      --surface2: #f2f3f7;
+      --surface3: #e9edf5;
+
+      --text: #1f2937;
+      --muted: #5b6472;
+      --muted2: #7a8494;
+
+      --stroke: rgba(31, 41, 55, 0.14);
+      --stroke2: rgba(31, 41, 55, 0.10);
+      --divider: rgba(31, 41, 55, 0.08);
+
+      /* Header */
+      --brandBlue1: #2f6fb5;
+      --brandBlue2: #3c83c9;
+      --brandField: #8fbf78;
+
+      /* Primary */
+      --primary: #2f6fb5;
+      --primary2: #245ea6;
+      --primarySoft: rgba(47, 111, 181, 0.14);
+
+      /* Lemon highlight */
+      --lemon: #f4d06f;
+      --lemon2: #ffd56a;
+      --lemonSoft: rgba(244, 208, 111, 0.35);
+
+      /* Status */
+      --ok: #3a8f4b;
+      --okSoft: rgba(58, 143, 75, 0.18);
+
+      --recommended: #3c64b1;
+      --recommendedSoft: rgba(60, 100, 177, 0.18);
+
+      --conditional: #d77a1f;
+      --conditionalSoft: rgba(215, 122, 31, 0.18);
+
+      --warn: #e6a83a;
+      --warnSoft: rgba(230, 168, 58, 0.20);
+
+      --nog: #8a98ad;
+      --nogSoft: rgba(138, 152, 173, 0.20);
+
+      /* Shadows */
+      --shadow: 0 10px 24px rgba(28, 38, 63, 0.16);
+      --shadow2: 0 16px 40px rgba(28, 38, 63, 0.18);
+
+      /* Keep your existing radius/fonts if you already rely on them */
+      --radius: 16px;
+      --radius2: 22px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Helvetica Neue", "Apple Color Emoji", "Segoe UI Emoji";
+    }
+
+    * {
+      box-sizing: border-box
+    }
+
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* ---------- App shell ---------- */
+    .app {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px 18px 28px;
+    }
+
+    /* ---------- Top bar (blue → green field tint) ---------- */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 16px;
+      padding: 12px 12px;
+      border-radius: var(--radius2);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.00)),
+        linear-gradient(90deg, var(--brandBlue2), var(--brandField));
+      color: #fff;
+      box-shadow: var(--shadow2);
+      border: 1px solid rgba(255, 255, 255, 0.20);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, rgba(47, 111, 181, 0.95), rgba(143, 191, 120, 0.95));
+      box-shadow: 0 12px 30px rgba(28, 38, 63, 0.22);
+      position: relative;
+    }
+
+    .logo:after {
+      content: "";
+      position: absolute;
+      inset: 10px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.35);
+    }
+
+    .titleblock .h1 {
+      font-size: 18px;
+      font-weight: 900;
+      margin: 0;
+    }
+
+    .titleblock .sub {
+      font-size: 12px;
+      opacity: 0.9;
+      margin-top: 3px;
+    }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.22);
+      border: 1px solid rgba(255, 255, 255, 0.28);
+      color: #fff;
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.65);
+    }
+
+    .dot.ok {
+      background: var(--ok);
+    }
+
+    .dot.bad {
+      background: #ef4444;
+    }
+
+    .status-text {
+      font-size: 12px;
+      max-width: 340px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: rgba(255, 255, 255, 0.95);
+    }
+
+    /* ---------- Tabs / stepper ---------- */
+    .tabs,
+    .stepper {
+      display: flex;
+      gap: 10px;
+      padding: 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.70);
+      border: 1px solid var(--stroke2);
+      margin-bottom: 16px;
+      overflow: auto;
+      box-shadow: var(--shadow);
+    }
+
+    .tab,
+    .step {
+      flex: 1;
+      min-width: 260px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      background: rgba(255, 255, 255, 0.85);
+      color: var(--text);
+      transition: all 120ms ease;
+      user-select: none;
+    }
+
+    .tab:hover,
+    .step:hover {
+      background: rgba(255, 255, 255, 0.95);
+    }
+
+    .tab.active,
+    .step.active {
+      background: linear-gradient(180deg, rgba(244, 208, 111, 0.60), rgba(255, 255, 255, 0.92));
+      border-color: rgba(244, 208, 111, 0.90);
+      box-shadow: 0 10px 22px rgba(28, 38, 63, 0.14);
+    }
+
+    .tabText {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .tab .label,
+    .step .label {
+      font-weight: 900;
+      font-size: 13px;
+    }
+
+    .tab .desc,
+    .step .desc {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .chev {
+      color: rgba(31, 41, 55, 0.45);
+      font-size: 18px;
+      user-select: none;
+    }
+
+
+.badgeNum{
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-weight: 950;
+  font-size: 12px;
+  background: rgba(31,41,55,0.08);
+  border: 1px solid rgba(31,41,55,0.12);
+}
+.tab.active .badgeNum{
+  background: rgba(244,208,111,0.65);
+  border-color: rgba(244,208,111,0.95);
+}
+
+    /* ---------- Layout ---------- */
+    .grid {
+      display: grid;
+      grid-template-columns: 1.25fr 0.75fr;
+      gap: 14px;
+    }
+
+    @media (max-width: 980px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* ---------- Cards ---------- */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius2);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .cardHeader {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--divider);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: linear-gradient(180deg, rgba(233, 237, 245, 0.75), rgba(255, 255, 255, 0));
+    }
+
+    .cardHeader .h2 {
+      margin: 0;
+      font-size: 13px;
+      letter-spacing: 0.35px;
+      font-weight: 950;
+      text-transform: uppercase;
+      color: var(--text);
+    }
+
+    .cardHeader .hint {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .cardBody {
+      padding: 14px 16px 16px;
+    }
+
+    /* ---------- Panel 1 module sidebar ---------- */
+    .moduleLayout {
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      gap: 12px;
+    }
+
+    @media (max-width: 980px) {
+      .moduleLayout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .moduleSidebar {
+      border: 1px solid var(--stroke2);
+      background: linear-gradient(180deg, rgba(242, 243, 247, 0.95), rgba(233, 237, 245, 0.95));
+      border-radius: 16px;
+      padding: 10px;
+      position: sticky;
+      top: 10px;
+      height: fit-content;
+      box-shadow: var(--shadow);
+    }
+
+    .moduleTitle {
+      font-weight: 950;
+      font-size: 12px;
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+
+    .modBtn {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 10px;
+      border-radius: 12px;
+      border: 1px solid var(--stroke2);
+      background: rgba(255, 255, 255, 0.85);
+      color: var(--text);
+      cursor: pointer;
+      font-weight: 900;
+      font-size: 13px;
+      margin-bottom: 8px;
+      text-align: left;
+      transition: all 120ms ease;
+    }
+
+    .modBtn:hover {
+      background: rgba(255, 255, 255, 0.95);
+    }
+
+    .modBtn.active {
+      background: linear-gradient(180deg, rgba(244, 208, 111, 0.60), rgba(255, 255, 255, 0.92));
+      border-color: rgba(244, 208, 111, 0.90);
+      box-shadow: 0 10px 22px rgba(28, 38, 63, 0.12);
+    }
+
+    .moduleHint {
+      margin-top: 8px;
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+
+    .moduleMain {
+      min-width: 0;
+    }
+
+    /* ---------- Buttons ---------- */
+    .btnRow {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .btn {
+      border-radius: 999px;
+      padding: 10px 14px;
+      border: 1px solid var(--stroke2);
+      background: rgba(233, 237, 245, 0.85);
+      color: var(--text);
+      cursor: pointer;
+      font-weight: 900;
+      font-size: 13px;
+      transition: all 120ms ease;
+      user-select: none;
+    }
+
+    .btn:hover {
+      background: rgba(233, 237, 245, 1);
+    }
+
+    .btn.primary {
+      background: linear-gradient(180deg, rgba(47, 111, 181, 0.95), rgba(36, 94, 166, 0.95));
+      border-color: rgba(36, 94, 166, 0.85);
+      color: #fff;
+    }
+
+    .btn.ghost {
+      background: rgba(255, 255, 255, 0.90);
+    }
+
+    .btn.danger {
+      border-color: rgba(239, 68, 68, 0.45);
+      background: rgba(239, 68, 68, 0.10);
+      color: #991b1b;
+    }
+
+    /* ---------- Form ---------- */
+    .formGrid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    @media (max-width: 980px) {
+      .formGrid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .field {
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid var(--stroke2);
+      border-radius: 14px;
+      padding: 10px 12px;
+    }
+
+    .field label {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .field label .cat {
+      font-size: 11px;
+      color: var(--muted2);
+      border: 1px solid var(--stroke2);
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(233, 237, 245, 0.70);
+      white-space: nowrap;
+    }
+
+    select,
+    input,
+    textarea {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--stroke2);
+      background: rgba(255, 255, 255, 0.95);
+      color: var(--text);
+      padding: 10px 10px;
+      font-size: 13px;
+      outline: none;
+    }
+
+    textarea {
+      min-height: 84px;
+      resize: vertical;
+    }
+
+    .small {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    /* ---------- Chips ---------- */
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 11px;
+      border-radius: 999px;
+      border: 1px solid var(--stroke2);
+      background: rgba(255, 255, 255, 0.85);
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    .chip .k {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      color: var(--muted2);
+    }
+
+    /* ---------- Pills ---------- */
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 7px 11px;
+      font-weight: 950;
+      font-size: 12px;
+      letter-spacing: 0.25px;
+      border: 1px solid var(--stroke2);
+      background: rgba(233, 237, 245, 0.85);
+      text-transform: uppercase;
+      color: var(--text);
+    }
+
+    .pill.ok {
+      background: var(--okSoft);
+      border-color: rgba(58, 143, 75, 0.35);
+      color: #1f5f2f;
+    }
+
+    .pill.warn {
+      background: var(--conditionalSoft);
+      border-color: rgba(215, 122, 31, 0.35);
+      color: #7a3f0a;
+    }
+
+    .pill.bad {
+      background: rgba(239, 68, 68, 0.10);
+      border-color: rgba(239, 68, 68, 0.35);
+      color: #991b1b;
+    }
+
+    .pill.blue {
+      background: var(--recommendedSoft);
+      border-color: rgba(60, 100, 177, 0.35);
+      color: #25408c;
+    }
+
+    /* ---------- Screening cards ---------- */
+    .pathGrid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    @media (max-width: 980px) {
+      .pathGrid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .pathCard {
+      background: linear-gradient(180deg, rgba(47, 111, 181, 0.05), rgba(255, 255, 255, 1) 60%);
+      border: 1px solid var(--stroke);
+      border-radius: 18px;
+      padding: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .pathTop {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .pathName {
+      font-weight: 1000;
+      font-size: 15px;
+      margin: 0;
+      color: var(--text);
+    }
+
+    .pathMeta {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .list {
+      margin: 8px 0 0;
+      padding-left: 16px;
+      color: rgba(31, 41, 55, 0.78);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    /* ---------- Notes box ---------- */
+    .mutedBox,
+    #notesBox {
+      border: 1px dashed rgba(47, 111, 181, 0.28);
+      border-radius: 14px;
+      padding: 12px 12px;
+      background: linear-gradient(180deg, rgba(47, 111, 181, 0.10), rgba(255, 255, 255, 0.92));
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    /* ---------- Panels ---------- */
+    .panel {
+      display: none;
+    }
+
+    .panel.active {
+      display: block;
+    }
+
+    /* ---------- Footer ---------- */
+    .foot {
+      margin-top: 14px;
+      font-size: 12px;
+      color: rgba(31, 41, 55, 0.45);
+      text-align: center;
+    }
+
+    /* ===== Selected Class Notes: force readable text ===== */
+    #notesBox,
+    #notesBox * {
+      color: #111827;
+      /* near-black, not harsh */
+    }
+
+
+    /* Headings (Aspect names) */
+    #notesBox strong,
+    #notesBox b {
+      color: #0f172a;
+      /* darker */
+      font-weight: 700;
+    }
+
+    /* RP-SOC / AWD / BIOCHAR / ERW lines */
+    #notesBox .rp,
+    #notesBox .awd,
+    #notesBox .biochar,
+    #notesBox .erw {
+      color: #1f2937;
+    }
+
+    /* MRV lines */
+    #notesBox .mrv {
+      color: #1d4ed8;
+      /* readable blue */
+      font-weight: 600;
+    }
+
+    /* Notes typography (kills remaining white inline look) */
+    #notesBox {
+      color: #111827;
+    }
+
+    #notesBox .noteTag {
+      font-weight: 900;
+      color: #334155;
+      /* dark slate */
+    }
+
+    #notesBox .noteTag.mrv {
+      color: #1d4ed8;
+    }
+
+    /* readable blue */
+    #notesBox .noteTag.rp {
+      color: #166534;
+    }
+
+    /* green */
+    #notesBox .noteTag.awd {
+      color: #9a3412;
+    }
+
+    /* brown/orange */
+    #notesBox .noteTag.bio {
+      color: #1e3a8a;
+    }
+
+    /* deep blue */
+    #notesBox .noteTag.erw {
+      color: #0f766e;
+    }
+
+    /* teal */
+
+    /* ===== Pathway Screening: light-tinted cards (RP / AWD / BIOCHAR / ERW) ===== */
+
+    /* ===== Pathway Screening: light-tinted cards (reliable class-based) ===== */
+
+/* Base: make card slightly “soft” */
+.pathCard {
+  position: relative;
+  border: 1px solid rgba(31, 41, 55, 0.10);
+  box-shadow: 0 10px 24px rgba(28, 38, 63, 0.10);
+  overflow: hidden;
+
+  /* default tint (fallback) */
+  background: linear-gradient(180deg, rgba(47, 111, 181, 0.07), rgba(255, 255, 255, 1) 60%);
+}
+
+/* Left accent line (default) */
+.pathCard::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  border-radius: 18px 0 0 18px;
+  background: rgba(47, 111, 181, 0.55);
+}
+
+/* RP-SOC → green tint */
+.pathCard.path-rp {
+  background: linear-gradient(180deg, rgba(58, 143, 75, 0.10), rgba(255, 255, 255, 1) 60%);
+}
+.pathCard.path-rp::before {
+  background: rgba(58, 143, 75, 0.60);
+}
+
+/* AWD-CH₄ → amber/orange tint */
+.pathCard.path-awd {
+  background: linear-gradient(180deg, rgba(215, 122, 31, 0.10), rgba(255, 255, 255, 1) 60%);
+}
+.pathCard.path-awd::before {
+  background: rgba(215, 122, 31, 0.60);
+}
+
+/* BIOCHAR → blue tint */
+.pathCard.path-bio {
+  background: linear-gradient(180deg, rgba(60, 100, 177, 0.10), rgba(255, 255, 255, 1) 60%);
+}
+.pathCard.path-bio::before {
+  background: rgba(60, 100, 177, 0.60);
+}
+
+/* ERW → teal tint */
+.pathCard.path-erw {
+  background: linear-gradient(180deg, rgba(15, 118, 110, 0.10), rgba(255, 255, 255, 1) 60%);
+}
+.pathCard.path-erw::before {
+  background: rgba(15, 118, 110, 0.60);
+}
+
+/* Good/bad flags */
+/* Flag chips */
+.flag-chip{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid #cbd5e1;
+  background:#f8fafc;
+  color:#0f172a;
+  font-size:12px;
+  line-height:1;
+  white-space:nowrap;
+}
+
+.flag-good{
+  background:#DCFCE7;   /* light green */
+  border-color:#86EFAC;
+  color:#166534;
+}
+
+.flag-bad{
+  background:#FEE2E2;   /* light red */
+  border-color:#FCA5A5;
+  color:#991B1B;
+}
+
+.flag-neutral{
+  background:#F1F5F9;   /* light slate */
+  border-color:#CBD5E1;
+  color:#334155;
+}
+
+  </style>
+
+
+
+
+</head>
+
+<body>
+  <div class="app">
+    <!-- Top Bar -->
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="titleblock">
+          <div class="h1">Carbon-Pathway Operating System (CP-OS) v1.0</div>
+        </div>
+      </div>
+      <div class="status-pill">
+        <div id="statusDot" class="dot"></div>
+        <div id="statusText" class="status-text">Loading CPOS_Classes & CPOS_Rules…</div>
+      </div>
+    </div>
+
+    <!-- Stepper -->
+    <!-- Tabs -->
+    <div class="tabs" role="tablist" aria-label="CP-OS stages">
+      <button class="tab active" role="tab" aria-selected="true" data-step="1" onclick="goStep(1)">
+    <span class="badgeNum">1</span>
+    <span class="tabText">
+      <span class="label">Land and Management context</span>
+      <span class="desc">Select classes</span>
+    </span>
+  </button>
+
+      <button class="tab" role="tab" aria-selected="false" data-step="2" onclick="goStep(2)">
+    <span class="badgeNum">2</span>
+    <span class="tabText">
+      <span class="label">Carbon Opportunity Analysis</span>
+      <span class="desc">Eligibility • Priorities • MRV tier</span>
+    </span>
+  </button>
+
+      <button class="tab" role="tab" aria-selected="false" data-step="3" onclick="goStep(3)">
+    <span class="badgeNum">3</span>
+    <span class="tabText">
+      <span class="label">Decision Summary</span>
+      <span class="desc">Stack + MRV focus + Save</span>
+    </span>
+  </button>
+    </div>
+
+    <!-- PANELS -->
+    <div id="panel1" class="panel active">
+      <div class="grid">
+        <!-- Left: Module sidebar + Aspect selection -->
+        <div class="card">
+          <div class="cardHeader">
+            <h3 class="h2">Site Modules</h3>
+            <div class="hint">Filter aspects by module (you can leave many blank)</div>
+          </div>
+
+          <div class="cardBody">
+            <div class="moduleLayout">
+              <!-- Sidebar modules -->
+              <div class="moduleSidebar">
+                <div class="moduleTitle">Modules</div>
+
+<button class="modBtn active" data-mod="FUNNEL" onclick="setModule('FUNNEL')">
+  Progressive validation <span>▸</span>
+</button>
+
+<button class="modBtn" data-mod="ALL" onclick="setModule('ALL')">
+  Show all aspects <span>▸</span>
+</button>
+
+<div class="moduleHint" id="funnelHint">
+  Progressive mode shows only the next most important dropdowns, and adapts as pathways become applicable / excluded.
+</div>
+
+
+                <div class="moduleHint">
+                  Filters which aspect dropdowns are shown.
+                </div>
+              </div>
+
+              <!-- Aspect dropdowns -->
+              <div class="moduleMain">
+                <div class="formGrid" id="aspectForm"></div>
+
+                <div id="evalGate" style="margin-top:12px; display:none">
+                  <div class="btnRow">
+                    <button class="btn ghost" onclick="clearSelections()">Clear</button>
+                    <button class="btn primary" onclick="evaluateAndGo()">Evaluate →</button>
+                  </div>
+                  <div id="evalGateHint" class="small" style="margin-top:8px"></div>
+                </div>
+
+
+                <div style="margin-top:10px" class="small" id="selectionHint">
+                  Tip: Start with <b>Crop Type</b>, <b>Water Management Intensity</b>, and
+                  <b>Operational / Irrigation Control</b>, then fill soil + climate as available.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Pathway notes per selected class -->
+        <div class="card">
+          <div class="cardHeader">
+            <h3 class="h2">Selected Class Notes</h3>
+            <div class="hint">What each selection implies per pathway</div>
+          </div>
+          <div class="cardBody">
+            <div id="notesBox" class="mutedBox">
+              Select one or more classes to view pathway notes and MRV variables here.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <div id="panel2" class="panel">
+      <div class="grid">
+        <!-- Left: results -->
+        <div class="card">
+          <div class="cardHeader">
+            <h3 class="h2">Pathway Screening</h3>
+            <div class="hint">Derived from CPOS_Rules</div>
+          </div>
+          <div class="cardBody">
+            <div id="screeningGrid" class="pathGrid"></div>
+
+            <div style="margin-top:12px" class="btnRow">
+              <button class="btn ghost" onclick="goStep(1)">← Back</button>
+              <button class="btn primary" onclick="goStep(3)">Decision Summary →</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: selection recap -->
+        <div class="card">
+          <div class="cardHeader">
+            <h3 class="h2">Current Inputs</h3>
+            <div class="hint">What you evaluated</div>
+          </div>
+          <div class="cardBody">
+            <div id="selectionRecap" class="chips"></div>
+            <div style="margin-top:12px" class="mutedBox" id="mrvStrip">
+              MRV focus strip will appear after evaluation.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="panel3" class="panel">
+      <div class="grid">
+        <!-- Left: decision summary -->
+        <div class="card">
+          <div class="cardHeader">
+            <h3 class="h2">Decision Summary</h3>
+            <div class="hint">Recommended stack + key cautions</div>
+          </div>
+          <div class="cardBody">
+            <div id="headlineBox" class="mutedBox">Evaluate at least one class to generate a decision summary.</div>
+
+<div class="small" style="margin-bottom:8px;color:var(--muted)"><b>Recommended</b></div>
+<div class="small" style="margin-bottom:8px;color:var(--muted)"><b>Conditional</b></div>
+<div class="small" style="margin-bottom:8px;color:var(--muted)"><b>Excluded</b></div>
+
+<div class="small" style="margin-bottom:8px;color:var(--muted)"><b>Recommended</b></div>
+<div id="recStack" class="chips" style="margin-bottom:12px"></div>
+
+<div class="small" style="margin-bottom:8px;color:var(--muted)"><b>Conditional</b></div>
+<div id="condStack" class="chips" style="margin-bottom:12px"></div>
+
+<div class="small" style="margin-bottom:8px;color:var(--muted)"><b>Excluded</b></div>
+<div id="exclStack" class="chips" style="margin-bottom:8px"></div>
+
+
+
+            <div style="margin-top:12px" class="btnRow">
+              <button class="btn ghost" onclick="goStep(2)">← Back</button>
+              <button class="btn primary" onclick="openSaveDrawer()">Save Assessment</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: save drawer -->
+        <div class="card">
+          <div class="cardHeader">
+            <h3 class="h2">Save Assessment</h3>
+            <div class="hint">Write to CPOS_Assessments</div>
+          </div>
+          <div class="cardBody">
+            <div class="small" style="margin-bottom:10px">
+              Optional in v1.0. If your CPOS_Assessments sheet is ready, fill the fields and save.
+            </div>
+
+            <div class="formGrid">
+              <div class="field">
+                <label>Client_ID <span class="cat">meta</span></label>
+                <input id="metaClientId" placeholder="Default">
+              </div>
+              <div class="field">
+                <label>Site_ID <span class="cat">meta</span></label>
+                <input id="metaSiteId" placeholder="SITE-001">
+              </div>
+              <div class="field">
+                <label>Site_Name <span class="cat">meta</span></label>
+                <input id="metaSiteName" placeholder="Village / Farm / Plot">
+              </div>
+              <div class="field">
+                <label>Crop_System <span class="cat">meta</span></label>
+                <input id="metaCropSystem" placeholder="Rice paddy / Upland cereal / etc.">
+              </div>
+              <div class="field">
+                <label>Latitude <span class="cat">meta</span></label>
+                <input id="metaLat" placeholder="26.1234">
+              </div>
+              <div class="field">
+                <label>Longitude <span class="cat">meta</span></label>
+                <input id="metaLon" placeholder="81.9876">
+              </div>
+              <div class="field">
+                <label>State <span class="cat">meta</span></label>
+                <input id="metaState" placeholder="UP">
+              </div>
+              <div class="field">
+                <label>District <span class="cat">meta</span></label>
+                <input id="metaDistrict" placeholder="Sonbhadra">
+              </div>
+              <div class="field" style="grid-column:1/-1">
+                <label>Notes <span class="cat">meta</span></label>
+                <textarea id="metaNotes" placeholder="Any assumptions, site notes, constraints…"></textarea>
+              </div>
+            </div>
+
+            <div style="margin-top:12px" class="btnRow">
+              <button class="btn ghost" onclick="fillDemoMeta()">Fill Demo</button>
+              <button class="btn primary" onclick="saveAssessment()">Save → Sheet</button>
+            </div>
+
+            <div id="saveStatus" style="margin-top:10px" class="small"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="foot">CP-OS v1.0 • Google Sheets rules engine • Apps Script UI</div>
+  </div>
+
+  <script>
+
+
+function gsRun_(){
+  if (typeof google === 'undefined' || !google.script || !google.script.run) {
+    return null;
+  }
+  return google.script.run;
+}
+
+    // ---------------------------
+// Global state (frontend)
+// ---------------------------
+const CPOS = {
+  loaded: false,
+  aspectsMap: {},
+  desirIdx: {},
+  wIdx: {},
+  rules: [],
+  selections: {},
+  lastEval: null,
+  activeModule: 'FUNNEL'
+};
+
+
+CPOS.sessionId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+  ? crypto.randomUUID()
+  : ('sess_' + Date.now());
+
+
+
+// ---------------------------
+// Progressive validation (NEW)
+// ---------------------------
+const CPOS_UI = {
+  mode: 'FUNNEL',     // FUNNEL | ALL
+  visibleK: 5,        // show next K high-weight unanswered aspects
+  autoEvalMin: 1,     // start live-eval after >= this many selections
+  debounceMs: 350
+};
+
+// Global weight order (decreasing validation importance)
+// (You can reorder freely; this becomes your “validation spine”.)
+const CPOS_VALIDATION_ORDER = [
+  'Crop Type',
+  'Water Management Intensity',
+  'Operational / Irrigation Control',
+  'Mineral Reactivity',
+  'Particle Size / Fineness',
+  'Rainfall Pattern',
+  'Drainage Class',
+  'Bulk Density / Structure',
+  'Soil Texture',
+  'Soil pH',
+  'Baseline SOC',
+  'Residue Quantity & Quality',
+  'Nutrient Availability / Stoichiometry',
+  'Soil Mineralogy',
+  'Other'
+];
+
+// Which aspects each pathway actually “depends” on (used to pull “next needed” items)
+const CPOS_PATHWAY_REQUIRED = {
+  'AWD-CH₄': [
+    'Crop Type',
+    'Water Management Intensity',
+    'Operational / Irrigation Control',
+    'Drainage Class',
+    'Temperature Regime',
+    'Soil Texture'
+  ],
+  'ERW': [
+    'Mineral Reactivity',
+    'Particle Size / Fineness',
+    'Rainfall Pattern',
+    'Drainage Class',
+    'Soil pH',
+    'Bulk Density / Structure',
+    'Soil Texture'
+  ],
+  'BIOCHAR': [
+    'Soil Texture',
+    'Rainfall Pattern',
+    'Soil pH',
+    'Baseline SOC',
+    'Soil Mineralogy',
+    'Bulk Density / Structure',
+    'Nutrient Availability / Stoichiometry',
+    'Residue Quantity & Quality',
+    'Temperature Regime',
+    'Drainage Class',
+    'Crop Type',
+    'Water Management Intensity',
+    'Operational / Irrigation Control'
+  ],
+  'RP-SOC': [
+    'Crop Type',
+    'Residue Quantity & Quality',
+    'Baseline SOC',
+    'Soil Mineralogy',
+    'Soil Texture',
+    'Nutrient Availability / Stoichiometry',
+    'Bulk Density / Structure',
+    'Drainage Class',
+    'Rainfall Pattern',
+    'Temperature Regime',
+    'Water Management Intensity',
+    'Operational / Irrigation Control'
+  ]
+};
+
+
+
+    // ---------------------------
+    // UI helpers
+    // ---------------------------
+    function setStatus(ok, msg) {
+      const dot = document.getElementById('statusDot');
+      const text = document.getElementById('statusText');
+      dot.classList.remove('ok','bad');
+      dot.classList.add(ok ? 'ok' : 'bad');
+      text.textContent = msg || (ok ? 'Ready' : 'Error');
+    }
+
+function goStep(n) {
+  // tabs active + aria
+  document.querySelectorAll('.tab').forEach(el => {
+    const isActive = Number(el.dataset.step) === Number(n);
+    el.classList.toggle('active', isActive);
+    el.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+
+  // panels (unchanged)
+  document.getElementById('panel1').classList.toggle('active', n === 1);
+  document.getElementById('panel2').classList.toggle('active', n === 2);
+  document.getElementById('panel3').classList.toggle('active', n === 3);
+}
+
+
+    function makePill(type, text) {
+      const span = document.createElement('span');
+      span.className = 'pill ' + (type || '');
+      span.textContent = text;
+      return span;
+    }
+
+    function makeChip(label, value) {
+      const div = document.createElement('div');
+      div.className = 'chip';
+      div.innerHTML = `<span class="k">${escapeHtml(label)}</span> <span>${escapeHtml(value)}</span>`;
+      return div;
+    }
+
+    function escapeHtml(s){
+      return String(s ?? '')
+        .replaceAll('&','&amp;')
+        .replaceAll('<','&lt;')
+        .replaceAll('>','&gt;')
+        .replaceAll('"','&quot;')
+        .replaceAll("'","&#039;");
+    }
+
+function countSelections() {
+  const aspects = Object.keys(CPOS.aspectsMap || {});
+  if (!aspects.length) return 0;
+
+  let c = 0;
+  aspects.forEach(a => {
+    if (String(CPOS.selections?.[a] || '').trim()) c++;
+  });
+  return c;
+}
+
+function getSelectedAspects_() {
+  const out = [];
+  Object.keys(CPOS.aspectsMap || {}).forEach(a => {
+    const v = String(CPOS.selections?.[a] || '').trim();
+    if (v) out.push(a);
+  });
+  return out;
+}
+
+function getNextMissingFromOrder_() {
+  const available = new Set(Object.keys(CPOS.aspectsMap || {}));
+  const selected = new Set(getSelectedAspects_());
+  const next = [];
+
+  for (const a of CPOS_VALIDATION_ORDER) {
+    if (!available.has(a)) continue;     // ignore if not in data
+    if (selected.has(a)) continue;       // already filled stays visible anyway
+    next.push(a);
+    if (next.length >= CPOS_UI.visibleK) break;
+  }
+  return next;
+}
+
+function getPathwayStatusMap_() {
+  // If never evaluated yet, assume pathways are "unknown" -> treat as not NO
+  const res = CPOS.lastEval?.results || {};
+  const map = {};
+  (['RP-SOC','AWD-CH₄','BIOCHAR','ERW']).forEach(p => {
+    const e = String(res?.[p]?.eligibility || '').toUpperCase();
+    map[p] = e || 'UNKNOWN';
+  });
+  return map;
+}
+
+function getNextNeededByPathways_() {
+  const available = new Set(Object.keys(CPOS.aspectsMap || {}));
+  const selected = new Set(getSelectedAspects_());
+  const status = getPathwayStatusMap_();
+
+  const needed = [];
+
+  (['RP-SOC','AWD-CH₄','BIOCHAR','ERW']).forEach(p => {
+    // If pathway is already NO, don't ask more for it
+    if (status[p] === 'NO') return;
+
+    const req = CPOS_PATHWAY_REQUIRED[p] || [];
+    for (const a of req) {
+      if (!available.has(a)) continue;
+      if (selected.has(a)) continue;
+      needed.push(a);
+      break; // only the next missing for that pathway
+    }
+  });
+
+  return [...new Set(needed)];
+}
+
+function getVisibleAspects_() {
+  const available = Object.keys(CPOS.aspectsMap || {});
+  const selected = new Set(getSelectedAspects_());
+
+  // Always show already selected aspects (never disappear)
+  const always = [...selected];
+
+  if (CPOS_UI.mode === 'ALL') {
+    // show everything, but keep selected first
+    const rest = available.filter(a => !selected.has(a));
+    return [...always, ...rest];
+  }
+
+  // FUNNEL mode:
+  const topK = getNextMissingFromOrder_();
+  const nextByPath = getNextNeededByPathways_();
+
+  const vis = [...new Set([...always, ...topK, ...nextByPath])];
+
+  // Keep stable deterministic ordering:
+  // - selected first (in global order), then remaining in global order, then anything leftover alpha.
+  const orderIndex = new Map();
+  CPOS_VALIDATION_ORDER.forEach((a,i) => orderIndex.set(a, i));
+
+  vis.sort((a,b) => {
+    const aSel = selected.has(a) ? 0 : 1;
+    const bSel = selected.has(b) ? 0 : 1;
+    if (aSel !== bSel) return aSel - bSel;
+
+    const ai = orderIndex.has(a) ? orderIndex.get(a) : 9999;
+    const bi = orderIndex.has(b) ? orderIndex.get(b) : 9999;
+    if (ai !== bi) return ai - bi;
+
+    return a.localeCompare(b);
+  });
+
+  return vis;
+}
+
+
+
+    // ---------------------------
+    // Build Aspect Form (clustered by Aspect_Category)
+    // ---------------------------
+function renderAspectForm() {
+  const container = document.getElementById('aspectForm');
+  container.innerHTML = '';
+
+  const aspectsMap = CPOS.aspectsMap || {};
+  const aspects = Object.keys(aspectsMap);
+
+  if (!aspects.length) {
+    container.innerHTML = `<div class="mutedBox" style="grid-column:1/-1">No aspects loaded.</div>`;
+    return;
+  }
+
+  const visible = getVisibleAspects_();
+
+  // Build only visible entries
+  const entries = visible.map(aspect => {
+    const obj = aspectsMap[aspect] || {};
+    return {
+      aspect,
+      category: obj.category || 'Uncategorized',  // kept only for the label pill
+      classes: obj.classes || []
+    };
+  });
+
+  entries.forEach(item => {
+    const field = document.createElement('div');
+    field.className = 'field';
+
+    const selId = 'sel_' + item.aspect.replaceAll(/[^a-zA-Z0-9]+/g,'_');
+    const current = CPOS.selections[item.aspect] || '';
+
+    const label = document.createElement('label');
+    // Keep category chip (we are not using it for filtering anymore)
+    label.innerHTML = `<span>${escapeHtml(item.aspect)}</span><span class="cat">${escapeHtml(item.category)}</span>`;
+
+    const select = document.createElement('select');
+    select.id = selId;
+
+    const opt0 = document.createElement('option');
+    opt0.value = '';
+    opt0.textContent = '— Select —';
+    select.appendChild(opt0);
+
+    (item.classes || []).forEach(cls => {
+      const opt = document.createElement('option');
+      opt.value = cls;
+      opt.textContent = cls;
+      if (cls === current) opt.selected = true;
+      select.appendChild(opt);
+    });
+
+    select.addEventListener('change', () => {
+      CPOS.selections[item.aspect] = select.value;
+
+      renderNotesBox();
+      updateEvalGateUI();
+      saveDraftSelections();
+
+
+      // live evaluation + live visibility update
+      scheduleAutoEvaluate_();
+      renderAspectForm();              // re-render funnel
+    });
+
+    field.appendChild(label);
+    field.appendChild(select);
+    container.appendChild(field);
+  });
+
+  renderNotesBox();
+  updateEvalGateUI();
+}
+
+
+let _cposEvalTimer = null;
+
+function saveDraftSelections() {
+  const payload = {
+    sessionId: CPOS.sessionId,
+    selections: CPOS.selections || {}
+  };
+
+  google.script.run
+    .withSuccessHandler(() => {
+      // optional: keep silent or show tiny "saved" status somewhere
+    })
+    .withFailureHandler(err => {
+      console.warn('Draft save error:', err);
+    })
+    .cpos_upsertDraft(payload); // ✅ wrapper (public) function
+}
+
+
+
+function scheduleAutoEvaluate_() {
+  const n = countSelections();
+  if (n < CPOS_UI.autoEvalMin) return;
+
+  if (_cposEvalTimer) clearTimeout(_cposEvalTimer);
+  _cposEvalTimer = setTimeout(() => {
+    autoEvaluateNow_();
+  }, CPOS_UI.debounceMs);
+}
+
+function autoEvaluateNow_() {
+  const n = countSelections();
+  if (n < CPOS_UI.autoEvalMin) return;
+
+  setStatus(true, 'Evaluating…');
+
+  google.script.run
+    .withSuccessHandler(res => {
+      if (!res || !res.ok) {
+        setStatus(false, 'Evaluation failed (bad response).');
+        return;
+      }
+      CPOS.lastEval = res;
+
+      // We stay on Step 1 during auto evaluation.
+      // (Step 2/3 are only on explicit Evaluate button.)
+      setStatus(true, 'Ready');
+
+      // Update funnel based on new eligibility state
+      renderAspectForm();
+    })
+    .withFailureHandler(err => {
+      setStatus(false, 'Evaluation error: ' + (err?.message || err));
+    })
+    .evaluateCPOS_Lite_v1(CPOS.selections, { noCache: true, touchCache: false, debug: false });
+
+}
+
+
+
+    // Notes box: show per selection what it implies per pathway, and MRV vars
+    function renderNotesBox() {
+  const box = document.getElementById('notesBox');
+  const sels = CPOS.selections || {};
+
+  const aspectsMap = CPOS.aspectsMap || {};
+  const desirIdx = CPOS.desirIdx || {};   // add this in init (see step 4)
+  const wIdx = CPOS.wIdx || {};           // add this in init (see step 4)
+
+  const pathways = [
+    { key: 'RP-SOC', label: 'RP-SOC', backend: 'Regenerative Ag' },
+    { key: 'AWD-CH₄', label: 'AWD-CH₄', backend: 'AWD' },
+    { key: 'BIOCHAR', label: 'BIOCHAR', backend: 'Biochar' },
+    { key: 'ERW', label: 'ERW', backend: 'ERW' }
+  ];
+
+  const parts = [];
+
+  Object.keys(sels).forEach(aspect => {
+    const cls = String(sels[aspect] || '').trim();
+    if (!cls) return;
+
+    const meta = aspectsMap[aspect] || {};
+    const cat = meta.category || 'Uncategorized';
+
+    const rows = pathways.map(p => {
+      const w = Number(wIdx[`${aspect}|${p.backend}`] || 0);
+      const d = Number(desirIdx[`${aspect}|${cls}|${p.backend}`]);
+      const dOk = !isNaN(d);
+
+      const badge = classifyFlagFromDesirability_(dOk ? d : null); // good/bad/neutral
+      const badgeHtml = dOk ? `<span class="flag-chip ${badge.cls}">${badge.txt}</span>` : '';
+
+      return `
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+          <span class="noteTag">${escapeHtml(p.label)}:</span>
+          <span style="opacity:0.75">w=${escapeHtml(w.toFixed ? w.toFixed(1) : String(w))}</span>
+          <span style="opacity:0.75">d=${dOk ? escapeHtml(d.toFixed(2)) : 'NA'}</span>
+          ${badgeHtml}
+        </div>
+      `;
+    }).join('');
+
+    parts.push(`
+      <div style="margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid rgba(31,41,55,0.08)">
+        <div style="display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; margin-bottom:6px">
+          <span style="font-weight:1000">${escapeHtml(aspect)}</span>
+          <span style="opacity:0.55">→</span>
+          <span style="font-weight:950">${escapeHtml(cls)}</span>
+          <span class="cat" style="margin-left:auto">${escapeHtml(cat)}</span>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr; gap:6px; font-size:12px; line-height:1.45">
+          ${rows}
+        </div>
+      </div>
+    `);
+  });
+
+  if (!parts.length) {
+    box.innerHTML = 'Select one or more classes to view explainability (weights × desirability) here.';
+  } else {
+    box.innerHTML = parts.join('');
+  }
+}
+
+
+    // ---------------------------
+    // Evaluation flow
+    // ---------------------------
+  function evaluateAndGo() {
+  const n = countSelections();
+
+  // v2: don't block for "all aspects selected"
+  // Require only a minimum number so results are not meaningless.
+  const MIN_REQUIRED = 3;
+
+  if (n < MIN_REQUIRED) {
+    setStatus(false, `Select at least ${MIN_REQUIRED} Aspect Classes before evaluating.`);
+    setTimeout(() => setStatus(true, 'Ready'), 1500);
+    return;
+  }
+
+  setStatus(true, 'Evaluating…');
+
+  // ✅ Final evaluation should WRITE cache (CPOS_Rules) once per comboKey set
+  const opts = { noCache: false };
+
+  google.script.run
+    .withSuccessHandler(res => {
+      console.log('evaluateCPOS_v2 response:', res);
+
+      // ✅ Defensive parsing (prevents "Cannot read properties of undefined")
+      const ok = !!(res && (res.ok === true || res.ok === undefined)); // allow old/new
+      const results = res && res.results && typeof res.results === 'object' ? res.results : null;
+
+      if (!ok || !results) {
+        setStatus(false, 'Evaluation failed: invalid response payload');
+        return;
+      }
+
+      // store for downstream steps
+      CPOS.lastEval = res;
+      CPOS.lastResults = results;
+
+      // ✅ Render safely (any one renderer shouldn't crash the whole flow)
+      try { renderSelectionRecap(); } catch (e) { console.warn('renderSelectionRecap failed:', e); }
+      try { renderScreening(results); } catch (e) { console.warn('renderScreening failed:', e); }
+      try { renderMRVStrip(results); } catch (e) { console.warn('renderMRVStrip failed:', e); }
+      try { renderDecisionSummary(results); } catch (e) { console.warn('renderDecisionSummary failed:', e); }
+
+      setStatus(true, 'Evaluation complete');
+      goStep(2);
+    })
+    .withFailureHandler(err => {
+      console.warn('evaluateCPOS_v2 error:', err);
+      setStatus(false, 'Evaluation error: ' + (err && err.message ? err.message : String(err)));
+    })
+    .evaluateCPOS_Lite_v1(CPOS.selections || {}, { noCache: false, touchCache: true, debug: true });
+}
+
+
+
+function selectionProgress() {
+  const total = Object.keys(CPOS.aspectsMap || {}).length;
+  const selected = countSelections();
+  return { selected, total };
+}
+
+
+    function renderSelectionRecap() {
+      const box = document.getElementById('selectionRecap');
+      box.innerHTML = '';
+      const sels = CPOS.selections || {};
+      Object.keys(sels).forEach(a => {
+        const v = String(sels[a] || '').trim();
+        if (!v) return;
+        box.appendChild(makeChip(a, v));
+      });
+      if (!box.childNodes.length) {
+        box.innerHTML = '<div class="small">No selections.</div>';
+      }
+    }
+
+    function pillForEligibility(e){
+      if (e === 'YES') return makePill('ok', 'YES');
+      if (e === 'NO') return makePill('bad', 'NO');
+      return makePill('warn', 'CONDITIONAL');
+    }
+    function pillForPriority(p){
+      if (p === 'HIGH') return makePill('ok', 'PRIORITY: HIGH');
+      if (p === 'LOW') return makePill('bad', 'PRIORITY: LOW');
+      return makePill('blue', 'PRIORITY: MEDIUM');
+    }
+
+    function pillForMRV(m){
+      if (m === 'HIGH') return makePill('warn', 'MRV: HIGH');
+      if (m === 'LIGHT') return makePill('ok', 'MRV: LIGHT');
+      return makePill('blue', 'MRV: STANDARD');
+    }
+
+    function renderScreening(results) {
+  const grid = document.getElementById('screeningGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+
+  const order = ["RP-SOC", "AWD-CH₄", "BIOCHAR", "ERW"];
+
+  order.forEach(k => {
+    const r = results?.[k] || {
+      eligibility: 'YES',
+      priority: 'MEDIUM',
+      mrv_tier: 'STANDARD',
+      reasons: [],
+      flags: [],
+      final_text: ''
+    };
+
+    const card = document.createElement('div');
+    card.className = 'pathCard';
+
+    // optional per-path class hooks (keep your existing CSS)
+    if (k === 'RP-SOC') card.classList.add('path-rp');
+    else if (k === 'AWD-CH₄') card.classList.add('path-awd');
+    else if (k === 'BIOCHAR') card.classList.add('path-bio');
+    else if (k === 'ERW') card.classList.add('path-erw');
+
+    // --- top row ---
+    const top = document.createElement('div');
+    top.className = 'pathTop';
+
+    const name = document.createElement('div');
+    name.innerHTML = `
+      <div class="pathName">${escapeHtml(k)}</div>
+      <div class="small" style="margin-top:3px">
+        ${
+          (k === "RP-SOC") ? "SOC accumulation (biological)" :
+          (k === "AWD-CH₄") ? "Avoided methane in rice paddies" :
+          (k === "BIOCHAR") ? "SOC permanence + resilience amplifier" :
+          "Durable inorganic CDR (silicate weathering)"
+        }
+      </div>
+    `;
+
+    const meta = document.createElement('div');
+    meta.className = 'pathMeta';
+    meta.appendChild(pillForEligibility(r.eligibility));
+    meta.appendChild(pillForPriority(r.priority));
+    meta.appendChild(pillForMRV(r.mrv_tier));
+
+    top.appendChild(name);
+    top.appendChild(meta);
+    card.appendChild(top);
+
+    // --- body: reasons OR synthesized narrative OR fallback ---
+    const reasonsArr = Array.isArray(r.reasons) ? r.reasons.filter(Boolean) : [];
+    const narrative = String(r.final_text || '').trim();
+
+    if (reasonsArr.length) {
+      const ul = document.createElement('ul');
+      ul.className = 'list';
+      reasonsArr.slice(0, 4).forEach(x => {
+        const li = document.createElement('li');
+        li.textContent = String(x);
+        ul.appendChild(li);
+      });
+      card.appendChild(ul);
+    } else {
+      const mb = document.createElement('div');
+      mb.className = 'mutedBox';
+      mb.textContent = narrative || 'No triggered rules (with current inputs).';
+      card.appendChild(mb);
+    }
+
+    // --- flags ---
+    const flagsArr = Array.isArray(r.flags) ? r.flags.filter(Boolean) : [];
+    if (flagsArr.length) {
+  const wrap = document.createElement('div');
+  wrap.className = 'chips';
+  wrap.style.marginTop = '10px';
+
+  flagsArr.slice(0, 10).forEach(f => {
+    const txt = String(f);
+    const kind = classifyFlagText_(txt); // keyword-based for flags (not desirability)
+    const el = document.createElement('span');
+    el.className = `flag-chip ${kind}`;
+    el.textContent = txt;
+    wrap.appendChild(el);
+  });
+
+  card.appendChild(wrap);
+}
+
+
+
+    // (optional) MRV variables chips, if you want them visible on the card
+    // const mrvVars = Array.isArray(r.mrv_variables) ? r.mrv_variables.filter(Boolean) : [];
+    // if (mrvVars.length) {
+    //   const mv = document.createElement('div');
+    //   mv.className = 'chips';
+    //   mv.style.marginTop = '10px';
+    //   mrvVars.slice(0, 6).forEach(v => mv.appendChild(makeChip('MRV', String(v))));
+    //   card.appendChild(mv);
+    // }
+
+    grid.appendChild(card);
+  });
+}
+
+
+    function renderMRVStrip(results) {
+      const box = document.getElementById('mrvStrip');
+
+      // Simple aggregated view: if any pathway HIGH -> high burden; else if any LIGHT -> light; else standard
+      const tiers = Object.values(results || {}).map(r => r?.mrv_tier || 'STANDARD');
+      let level = 'STANDARD';
+      if (tiers.includes('HIGH')) level = 'HIGH';
+      else if (tiers.includes('LIGHT')) level = 'LIGHT';
+
+      let msg = '';
+      if (level === 'HIGH') msg = 'MRV focus: High-tier monitoring likely needed for at least one pathway (uncertainty control, higher frequency measurements, stronger audit trail).';
+      else if (level === 'LIGHT') msg = 'MRV focus: Light MRV feasible (activity data + minimal sampling) for current selections.';
+      else msg = 'MRV focus: Standard MRV (periodic sampling + activity records) is generally sufficient for current selections.';
+
+      box.innerHTML = `<b style="color:rgba(110,168,255,0.90)">MRV Focus Strip</b><div style="margin-top:6px">${escapeHtml(msg)}</div>`;
+    }
+
+    // ---------------------------
+    // Decision Summary (frontend computed)
+    // ---------------------------
+    function buildDecisionSummary(results) {
+      const pathways = ["RP-SOC", "AWD-CH₄", "BIOCHAR", "ERW"];
+      const eligRank = { "YES": 3, "CONDITIONAL": 2, "NO": 1 };
+      const prRank = { "HIGH": 3, "MEDIUM": 2, "LOW": 1 };
+      const mrvRank = { "LIGHT": 3, "STANDARD": 2, "HIGH": 1 };
+
+      const items = pathways.map(k => {
+        const r = results[k] || {};
+        return {
+          k,
+          eligibility: r.eligibility || "YES",
+          priority: r.priority || "MEDIUM",
+          mrv_tier: r.mrv_tier || "STANDARD",
+          reasons: r.reasons || [],
+          flags: r.flags || []
+        };
+      });
+
+      const recommended = items
+        .filter(x => x.eligibility === "YES")
+        .sort((a,b) => prRank[b.priority] - prRank[a.priority] || mrvRank[b.mrv_tier] - mrvRank[a.mrv_tier])
+        .map(x => x.k);
+
+      const conditional = items
+        .filter(x => x.eligibility === "CONDITIONAL")
+        .sort((a,b) => prRank[b.priority] - prRank[a.priority] || mrvRank[b.mrv_tier] - mrvRank[a.mrv_tier])
+        .map(x => x.k);
+
+      const excluded = items
+        .filter(x => x.eligibility === "NO")
+        .map(x => x.k);
+
+      const riskFlags = [...new Set(items.flatMap(x => x.flags || []))].slice(0, 12);
+
+      const topReasons = {};
+      items.forEach(x => {
+        if ((x.reasons || []).length) topReasons[x.k] = x.reasons.slice(0, 2);
+      });
+
+      const headParts = [];
+      if (recommended.length) headParts.push(`${recommended.join(" + ")} recommended`);
+      if (conditional.length) headParts.push(`${conditional.join(" + ")} conditional`);
+      if (excluded.length) headParts.push(`${excluded.join(" + ")} excluded`);
+      const headline = headParts.join("; ") || "No decision available.";
+
+      return { recommended, conditional, excluded, headline, topReasons, riskFlags };
+    }
+
+    function renderDecisionSummary(results) {
+      const sum = buildDecisionSummary(results);
+
+      const headlineBox = document.getElementById('headlineBox');
+      const reasonsBits = [];
+      Object.keys(sum.topReasons || {}).forEach(k => {
+        const rr = sum.topReasons[k] || [];
+        if (!rr.length) return;
+        reasonsBits.push(`<div style="margin-top:10px"><b>${escapeHtml(k)}</b><ul class="list">${rr.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul></div>`);
+      });
+
+      const flagsBits = (sum.riskFlags || []).length
+        ? `<div style="margin-top:10px"><b>Risk flags</b><div class="chips" style="margin-top:8px">${sum.riskFlags.map(f => `<span class="chip"><span class="k">Flag</span> ${escapeHtml(f)}</span>`).join('')}</div></div>`
+        : '';
+
+      headlineBox.innerHTML = `<div style="font-weight:1000; font-size:13px">${escapeHtml(sum.headline)}</div>`
+        + (reasonsBits.length ? reasonsBits.join('') : `<div style="margin-top:10px;color:var(--muted)">No reasons triggered (with current inputs).</div>`)
+        + flagsBits;
+
+      // stacks
+      renderStackChips('recStack', sum.recommended, 'Recommended');
+      renderStackChips('condStack', sum.conditional, 'Conditional');
+      renderStackChips('exclStack', sum.excluded, 'Excluded');
+    }
+
+      function renderStackChips(elId, arr, label) {
+        const box = document.getElementById(elId);
+        if (!box) return; // ✅ prevents crash if the container isn't present
+
+        box.innerHTML = '';
+        if (!arr || !arr.length) {
+          box.innerHTML = `<div class="small" style="color:var(--muted)">None</div>`;
+          return;
+        }
+        arr.forEach(k => box.appendChild(makeChip(label, k)));
+      }
+
+
+    // ---------------------------
+    // Actions
+    // ---------------------------
+    function clearSelections() {
+      CPOS.selections = {};
+      renderAspectForm();
+      renderSelectionRecap();
+      document.getElementById('notesBox').textContent =
+        'Select one or more classes to view pathway notes and MRV variables here.';
+      setStatus(true, 'Selections cleared');
+    }
+
+    function openSaveDrawer() {
+      // nothing special; fields already visible
+      if (!CPOS.lastEval) setStatus(false, 'Evaluate before saving.');
+      else setStatus(true, 'Ready to save (optional)');
+    }
+
+    function fillDemoMeta(){
+      document.getElementById('metaClientId').value = 'Default';
+      document.getElementById('metaSiteId').value = 'SITE-001';
+      document.getElementById('metaSiteName').value = 'Demo Site';
+      document.getElementById('metaCropSystem').value = 'Rice paddy';
+      document.getElementById('metaLat').value = '26.1234';
+      document.getElementById('metaLon').value = '81.9876';
+      document.getElementById('metaState').value = 'UP';
+      document.getElementById('metaDistrict').value = 'Sonbhadra';
+      document.getElementById('metaNotes').value = 'Demo assessment for CP-OS v1.0 UI test.';
+    }
+
+    function saveAssessment() {
+      const out = document.getElementById('saveStatus');
+      out.textContent = '';
+
+      if (!CPOS.lastEval || !CPOS.lastEval.ok) {
+        out.textContent = 'Nothing to save (evaluate first).';
+        return;
+      }
+
+      const payload = {
+        Client_ID: document.getElementById('metaClientId').value || 'Default',
+        Site_ID: document.getElementById('metaSiteId').value || '',
+        Site_Name: document.getElementById('metaSiteName').value || '',
+        Crop_System: document.getElementById('metaCropSystem').value || '',
+        Latitude: document.getElementById('metaLat').value || '',
+        Longitude: document.getElementById('metaLon').value || '',
+        State: document.getElementById('metaState').value || '',
+        District: document.getElementById('metaDistrict').value || '',
+        selections: CPOS.lastEval.selections || CPOS.selections || {},
+        results: CPOS.lastEval.results || {},
+        notes: document.getElementById('metaNotes').value || ''
+      };
+
+      out.textContent = 'Saving…';
+
+      google.script.run
+        .withSuccessHandler(res => {
+          if (res && res.ok) {
+            out.innerHTML = `<span style="color:rgba(65,247,154,0.92); font-weight:900">Saved:</span> ${escapeHtml(res.Assessment_ID || '')}`;
+          } else {
+            out.textContent = 'Save failed (bad response).';
+          }
+        })
+        .withFailureHandler(err => {
+          out.textContent = 'Save error: ' + (err?.message || err);
+        })
+        .saveCPOSAssessment(payload);
+    }
+
+    // ---------------------------
+    // Initial load
+    // ---------------------------
+function init() {
+  console.log('[CPOS] init() start');
+  setStatus(true, 'Loading CPOS-Lite tables…');
+  const loadTimeout = setTimeout(() => {
+  setStatus(false, 'Load timed out (getCPOSData did not return). Check Apps Script Executions.');
+}, 12000);
+
+
+  if (typeof google === 'undefined' || !google.script || !google.script.run) {
+    setStatus(false, 'Apps Script runtime not available (local mode).');
+    return;
+  }
+
+  console.log('[CPOS] calling getCPOSData...');
+
+  google.script.run
+  .withSuccessHandler(res => {
+    clearTimeout(loadTimeout);
+    console.log('[CPOS] getCPOSData success:', res);
+
+    if (!res || !res.ok) {
+      setStatus(false, 'Failed to load data (bad response).');
+      return;
+    }
+
+    CPOS.loaded = true;
+    CPOS.aspectsMap = res.aspectsMap || {};
+    CPOS.desirIdx = res.desirIdx || {};
+    CPOS.wIdx = res.wIdx || {};
+
+    // ✅ DEBUG: inspect the first aspect object we received
+    const _k0 = Object.keys(CPOS.aspectsMap || {})[0];
+    console.log('aspectsMap source sample:', _k0, _k0 ? CPOS.aspectsMap[_k0] : null);
+
+    CPOS.rules = res.rules || [];
+
+    setStatus(true, `Ready • Aspects=${Object.keys(CPOS.aspectsMap).length}`);
+    setModule(CPOS.activeModule === 'ALL' ? 'ALL' : 'FUNNEL');
+  })
+
+    .withFailureHandler(err => {
+      clearTimeout(loadTimeout);
+      console.log('[CPOS] getCPOSData failure:', err);
+      setStatus(false, 'Load error: ' + (err?.message || err));
+    })
+    .getCPOSData_Lite();
+}
+
+
+
+function setModule(mod){
+  CPOS_UI.mode = (mod === 'ALL') ? 'ALL' : 'FUNNEL';
+
+  // UI active button
+  document.querySelectorAll('.modBtn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mod === mod);
+  });
+
+  // hint
+  const hint = document.getElementById('funnelHint');
+  if (hint) {
+    hint.textContent = (CPOS_UI.mode === 'ALL')
+      ? 'All aspects are shown. Use this to audit or override.'
+      : 'Progressive mode shows only the next most important dropdowns, and adapts as pathways become applicable / excluded.';
+  }
+
+  renderAspectForm();       // re-render with new visibility logic
+  updateEvalGateUI();       // keep status consistent
+}
+
+
+
+function allAspectsSelected(minRequired = 3) {
+  // v2: "all selected" is not required; only require a minimum count
+  return countSelections() >= minRequired;
+}
+
+
+function updateEvalGateUI() {
+  const gate = document.getElementById('evalGate');
+  const hint = document.getElementById('evalGateHint');
+  if (!gate || !hint) return;
+
+  // v2 test: evaluate from ANY module
+  gate.style.display = 'block';
+
+  const selected = countSelections();
+  const MIN_REQUIRED = 3;
+  const complete = selected >= MIN_REQUIRED;
+
+  hint.textContent = complete
+    ? `Ready to evaluate. Selected ${selected} aspect(s).`
+    : `Select at least ${MIN_REQUIRED} aspect(s) to evaluate. Currently selected ${selected}.`;
+
+  // Disable Evaluate until min selections met (Clear always enabled)
+  gate.querySelectorAll('button').forEach(btn => {
+    const isClear = btn.textContent.trim().toLowerCase().startsWith('clear');
+    if (isClear) return;
+
+    btn.disabled = !complete;
+    btn.style.opacity = complete ? '1' : '0.55';
+    btn.style.cursor = complete ? 'pointer' : 'not-allowed';
+  });
+}
+
+// ✅ BOOT (required) — call init once after DOM is ready
+document.addEventListener('DOMContentLoaded', init);
+
+
+function classifyFlagFromDesirability_(d) {
+  // d is 0..1; interpret as:
+  // 0.00–0.33 adverse, 0.34–0.66 mixed, 0.67–1.00 supportive
+  if (d === null || d === undefined || isNaN(Number(d))) {
+    return { cls: 'flag-neutral', txt: 'NA' };
+  }
+  const x = Number(d);
+  if (x <= 0.33) return { cls: 'flag-bad', txt: 'Adverse' };
+  if (x >= 0.67) return { cls: 'flag-good', txt: 'Supportive' };
+  return { cls: 'flag-neutral', txt: 'Mixed' };
+}
+
+function classifyFlagText_(s) {
+  const t = String(s || '').toLowerCase();
+
+  // adverse / negative / nonsupportive
+  const bad = ['adverse','not feasible','ineligible','excluded','risk','uncertainty','variable','high burden','constraint','limitation','poor','low','negative','nonsupport'];
+  const good = ['support','feasible','eligible','recommended','good','high potential','low burden','favorable','strong','positive'];
+
+  if (bad.some(k => t.includes(k))) return 'flag-bad';
+  if (good.some(k => t.includes(k))) return 'flag-good';
+  return 'flag-neutral';
+}
+
+
+
+  </script>
+</body>
+
+</html>
