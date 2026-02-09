@@ -165,7 +165,7 @@ function getCPOSData_Lite() {
   const aspectsMap = {};
   boundsTbl.rows.forEach(r => {
     const a = cpos_normKey_(r.Variable_Name);
-    const c = cpos_normKey_(r.Class_Name);
+    const c = cpos_normKey_(r.Class_Label);
     if (!a || !c) return;
 
     if (!aspectsMap[a]) {
@@ -200,7 +200,7 @@ function getCPOSData_Lite() {
   const desirIdx = {};
   desirTbl.rows.forEach(r => {
     const a = cpos_normKey_(r.Variable_Name);
-    const c = cpos_normKey_(r.Class_Name);
+    const c = cpos_normKey_(r.Class_Label);
     const p = cpos_normPathway_(r.Pathway);
 
     const d = Number(r.Desirability_0_1);
