@@ -559,74 +559,124 @@ function getCPOSLiteTables() {
     // Build indexes from 3 sheets
     // ---------------------------
     function buildIndexes_() {
-      CPOSL.idx.boundsByVar = new Map();
-      CPOSL.idx.factorsByCat = new Map();
-      CPOSL.idx.desirByVarPathClass = new Map();
-      CPOSL.idx.weightByVarPath = new Map();
+  // ---------------------------
+  // Pathway normalization (matches backend intent)
+  // ---------------------------
+  function normPathway_(p) {
+    const s = String(p || '').trim();
+    const k = s.toLowerCase();
 
-      // Bounds
-      for (const r of (CPOSL.data.bounds || [])) {
-        const varName = String(r.Variable_Name || '').trim();
-        if (!varName) continue;
+    // map common variants -> canonical
+    if (k === 'rp-soc' || k === 'rp soc' || k === 'regenerative ag' || k === 'regenerative agriculture') return 'RP-SOC';
+    if (k === 'awd' || k === 'awd-ch4' || k === 'awd-ch₄' || k === 'awd-ch₄' || k === 'awd ch4') return 'AWD-CH₄';
+    if (k === 'biochar') return 'BIOCHAR';
+    if (k === 'erw') return 'ERW';
 
-        const f = CPOSL.idx.boundsByVar.get(varName) || {
-          Variable_Name: varName,
-          Factor_ID: String(r.Factor_ID || '').trim(),
-          Factor_Category: String(r.Factor_Category || 'Other').trim(),
-          Factor_Display_Name: String(r.Factor_Display_Name || varName).trim(),
-          Unit: String(r.Unit || '').trim(),
-          classes: []
-        };
+    // if already canonical or unknown, keep as-is
+    return s;
+  }
 
-        f.classes.push({
-          Class_Order: toNum(r.Class_Order),
-          Class_Label: String(r.Class_Label || '').trim(),
-          Lower_Bound: toNum(r.Lower_Bound),
-          Upper_Bound: toNum(r.Upper_Bound),
-          Lower_Inclusive: toBool(r.Lower_Inclusive),
-          Upper_Inclusive: toBool(r.Upper_Inclusive)
-        });
+  // ---------------------------
+  // Reset indexes
+  // ---------------------------
+  CPOSL.idx.boundsByVar = new Map();
+  CPOSL.idx.factorsByCat = new Map();
+  CPOSL.idx.desirByVarPathClass = new Map();
+  CPOSL.idx.weightByVarPath = new Map();
 
-        CPOSL.idx.boundsByVar.set(varName, f);
-      }
+  // ---------------------------
+  // Bounds (CPOS_Lite_Bounds)
+  // ---------------------------
+  for (const r of (CPOSL.data.bounds || [])) {
+    const varName = String(r.Variable_Name || '').trim();
+    if (!varName) continue;
 
-      // Sort classes, group by category
-      for (const [varName, f] of CPOSL.idx.boundsByVar.entries()) {
-        f.classes.sort((a,b) => (a.Class_Order ?? 0) - (b.Class_Order ?? 0));
-        const cat = f.Factor_Category || 'Other';
-        if (!CPOSL.idx.factorsByCat.has(cat)) CPOSL.idx.factorsByCat.set(cat, []);
-        CPOSL.idx.factorsByCat.get(cat).push(f);
-      }
+    const f = CPOSL.idx.boundsByVar.get(varName) || {
+      Variable_Name: varName,
+      Factor_ID: String(r.Factor_ID || '').trim(),
+      Factor_Category: String(r.Factor_Category || 'Other').trim(),
+      Factor_Display_Name: String(r.Factor_Display_Name || varName).trim(),
+      Unit: String(r.Unit || '').trim(),
+      classes: []
+    };
 
-      for (const [cat, arr] of CPOSL.idx.factorsByCat.entries()) {
-        arr.sort((a,b) => (a.Factor_Display_Name||'').localeCompare(b.Factor_Display_Name||''));
-      }
+    const classLabel = String(r.Class_Label || '').trim(); // ✅ canonical header
+    if (!classLabel) continue;
 
-      // Desirability
-      for (const r of (CPOSL.data.desirability || [])) {
-        const varName = String(r.Variable_Name || '').trim();
-        const pathway = String(r.Pathway || '').trim();
-        const classLabel = String(r.Class_Label || '').trim();
-        if (!varName || !pathway || !classLabel) continue;
+    f.classes.push({
+      Class_Order: toNum(r.Class_Order),
+      Class_Label: classLabel,
+      Lower_Bound: toNum(r.Lower_Bound),
+      Upper_Bound: toNum(r.Upper_Bound),
+      Lower_Inclusive: toBool(r.Lower_Inclusive),
+      Upper_Inclusive: toBool(r.Upper_Inclusive)
+    });
 
-        const key = `${varName}||${pathway}||${classLabel}`;
-        CPOSL.idx.desirByVarPathClass.set(key, {
-          d: toNum(r.Desirability_0_1),
-          shape: String(r.Shape || '').trim(),
-          ctx: String(r.Pathway_Context || '').trim()
-        });
-      }
+    CPOSL.idx.boundsByVar.set(varName, f);
+  }
 
-      // Weights
-      for (const r of (CPOSL.data.weights || [])) {
-        const varName = String(r.Variable_Name || '').trim();
-        const pathway = String(r.Pathway || '').trim();
-        if (!varName || !pathway) continue;
+  // Sort classes, group factors by category
+  for (const [, f] of CPOSL.idx.boundsByVar.entries()) {
+    f.classes.sort((a, b) => (a.Class_Order ?? 0) - (b.Class_Order ?? 0));
 
-        const key = `${varName}||${pathway}`;
-        CPOSL.idx.weightByVarPath.set(key, toNum(r.Sensitivity_Weight_0_10));
-      }
-    }
+    const cat = f.Factor_Category || 'Other';
+    if (!CPOSL.idx.factorsByCat.has(cat)) CPOSL.idx.factorsByCat.set(cat, []);
+    CPOSL.idx.factorsByCat.get(cat).push(f);
+  }
+
+  for (const [, arr] of CPOSL.idx.factorsByCat.entries()) {
+    arr.sort((a, b) => (a.Factor_Display_Name || '').localeCompare(b.Factor_Display_Name || ''));
+  }
+
+  // ---------------------------
+  // Desirability (CPOS_Lite_Desirability)
+  // key: `${Variable_Name}||${Pathway}||${Class_Label}`
+  // ---------------------------
+  for (const r of (CPOSL.data.desirability || [])) {
+    const varName = String(r.Variable_Name || '').trim();
+    const pathway = normPathway_(r.Pathway);
+    const classLabel = String(r.Class_Label || '').trim(); // ✅ canonical header
+    if (!varName || !pathway || !classLabel) continue;
+
+    const d = toNum(r.Desirability_0_1);
+    if (!Number.isFinite(d)) continue;
+
+    const key = `${varName}||${pathway}||${classLabel}`;
+    CPOSL.idx.desirByVarPathClass.set(key, {
+      d,
+      shape: String(r.Shape || '').trim(),
+      ctx: String(r.Pathway_Context || '').trim()
+    });
+  }
+
+  // ---------------------------
+  // Weights (CPOS_Lite_Weights)
+  // key: `${Variable_Name}||${Pathway}`
+  // ---------------------------
+  for (const r of (CPOSL.data.weights || [])) {
+    const varName = String(r.Variable_Name || '').trim();
+    const pathway = normPathway_(r.Pathway);
+    if (!varName || !pathway) continue;
+
+    const w = toNum(r.Sensitivity_Weight_0_10);
+    if (!Number.isFinite(w)) continue;
+
+    const key = `${varName}||${pathway}`;
+    CPOSL.idx.weightByVarPath.set(key, w);
+  }
+
+  // ---------------------------
+  // Optional: quick diagnostics (safe)
+  // ---------------------------
+  try {
+    console.log('[CPOS] buildIndexes_',
+      'bounds vars=', CPOSL.idx.boundsByVar.size,
+      'desir keys=', CPOSL.idx.desirByVarPathClass.size,
+      'weight keys=', CPOSL.idx.weightByVarPath.size
+    );
+  } catch (e) {}
+}
+
 
     // ---------------------------
     // Classification from bounds
@@ -1189,7 +1239,7 @@ catField.style.borderColor = 'rgba(214, 198, 160, 1)'; // muted beige border
         Longitude: document.getElementById('metaLon').value || '',
         State: document.getElementById('metaState').value || '',
         District: document.getElementById('metaDistrict').value || '',
-        inputs: CPOSL.selections || {},
+        selections: CPOSL.selections || {},
         results: CPOSL.lastResults || {},
         notes: document.getElementById('metaNotes').value || ''
       };
