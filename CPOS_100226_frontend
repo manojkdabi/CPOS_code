@@ -1,0 +1,5355 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CP-OS v1.0 DSS (Lite)</title>
+
+  <!-- ✅ DROP-IN (CLEAN) CSS: keeps your look, removes unrelated legacy overrides -->
+  <style>
+    :root {
+      --bg: #f5f6fb;
+      --surface: #ffffff;
+      --surface2: #f2f3f7;
+      --surface3: #e9edf5;
+
+      --text: #1f2937;
+      --muted: #5b6472;
+      --muted2: #7a8494;
+
+      --stroke: rgba(31, 41, 55, 0.14);
+      --stroke2: rgba(31, 41, 55, 0.10);
+      --divider: rgba(31, 41, 55, 0.08);
+
+      --brandBlue1: #2f6fb5;
+      --brandBlue2: #3c83c9;
+      --brandField: #8fbf78;
+
+      --primary: #2f6fb5;
+      --primary2: #245ea6;
+
+      --lemon: #f4d06f;
+      --ok: #3a8f4b;
+      --warn: #e6a83a;
+
+      --recommended: #3c64b1;
+      --conditional: #d77a1f;
+
+      --shadow: 0 10px 24px rgba(28, 38, 63, 0.16);
+      --shadow2: 0 16px 40px rgba(28, 38, 63, 0.18);
+
+      --radius: 16px;
+      --radius2: 22px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Helvetica Neue";
+    }
+
+    * {
+      box-sizing: border-box
+    }
+
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    .app {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px 18px 28px
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 16px;
+      padding: 12px 12px;
+      border-radius: var(--radius2);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.00)),
+        linear-gradient(90deg, var(--brandBlue2), var(--brandField));
+      color: #fff;
+      box-shadow: var(--shadow2);
+      border: 1px solid rgba(255, 255, 255, 0.20);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px
+    }
+
+    .logo {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, rgba(47, 111, 181, 0.95), rgba(143, 191, 120, 0.95));
+      box-shadow: 0 12px 30px rgba(28, 38, 63, 0.22);
+      position: relative;
+    }
+
+    .logo:after {
+      content: "";
+      position: absolute;
+      inset: 10px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.35);
+    }
+
+    .titleblock .h1 {
+      font-size: 18px;
+      font-weight: 900;
+      margin: 0
+    }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.22);
+      border: 1px solid rgba(255, 255, 255, 0.28);
+      color: #fff;
+      max-width: 520px;
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.65)
+    }
+
+    .dot.ok {
+      background: var(--ok)
+    }
+
+    .dot.bad {
+      background: #ef4444
+    }
+
+    .status-text {
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: rgba(255, 255, 255, 0.95);
+    }
+
+    .tabs {
+      display: flex;
+      gap: 10px;
+      padding: 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.70);
+      border: 1px solid var(--stroke2);
+      margin-bottom: 16px;
+      overflow: auto;
+      box-shadow: var(--shadow);
+    }
+
+    .tab {
+      flex: 1;
+      min-width: 260px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      background: rgba(255, 255, 255, 0.85);
+      color: var(--text);
+      transition: all 120ms ease;
+      user-select: none;
+    }
+
+    .tab:hover {
+      background: rgba(255, 255, 255, 0.95)
+    }
+
+    .tab.active {
+      background: linear-gradient(180deg, rgba(244, 208, 111, 0.60), rgba(255, 255, 255, 0.92));
+      border-color: rgba(244, 208, 111, 0.90);
+      box-shadow: 0 10px 22px rgba(28, 38, 63, 0.14);
+    }
+
+    .badgeNum {
+      width: 28px;
+      height: 28px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      font-weight: 950;
+      font-size: 12px;
+      background: rgba(31, 41, 55, 0.08);
+      border: 1px solid rgba(31, 41, 55, 0.12);
+    }
+
+    .tab.active .badgeNum {
+      background: rgba(244, 208, 111, 0.65);
+      border-color: rgba(244, 208, 111, 0.95)
+    }
+
+    .tabText {
+      display: flex;
+      flex-direction: column;
+      gap: 2px
+    }
+
+    .tab .label {
+      font-weight: 900;
+      font-size: 13px
+    }
+
+    .tab .desc {
+      font-size: 12px;
+      color: var(--muted)
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.25fr 0.75fr;
+      gap: 14px
+    }
+
+    @media (max-width:980px) {
+      .grid {
+        grid-template-columns: 1fr
+      }
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius2);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .cardHeader {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--divider);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: linear-gradient(180deg, rgba(233, 237, 245, 0.75), rgba(255, 255, 255, 0));
+    }
+
+    .cardHeader .h2 {
+      margin: 0;
+      font-size: 13px;
+      letter-spacing: 0.35px;
+      font-weight: 950;
+      text-transform: uppercase;
+      color: var(--text);
+    }
+
+    .cardHeader .hint {
+      font-size: 12px;
+      color: var(--muted)
+    }
+
+    .cardBody {
+      padding: 14px 16px 16px
+    }
+
+    .btnRow {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px
+    }
+
+    .btn {
+      border-radius: 999px;
+      padding: 10px 14px;
+      border: 1px solid var(--stroke2);
+      background: rgba(233, 237, 245, 0.85);
+      color: var(--text);
+      cursor: pointer;
+      font-weight: 900;
+      font-size: 13px;
+      transition: all 120ms ease;
+      user-select: none;
+    }
+
+    .btn:hover {
+      background: rgba(233, 237, 245, 1)
+    }
+
+    .btn.primary {
+      background: linear-gradient(180deg, rgba(47, 111, 181, 0.95), rgba(36, 94, 166, 0.95));
+      border-color: rgba(36, 94, 166, 0.85);
+      color: #fff;
+    }
+
+    .btn.ghost {
+      background: rgba(255, 255, 255, 0.90)
+    }
+
+    .btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed
+    }
+
+    .formGrid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px
+    }
+
+    @media (max-width:980px) {
+      .formGrid {
+        grid-template-columns: 1fr
+      }
+    }
+
+    .field {
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid var(--stroke2);
+      border-radius: 14px;
+      padding: 10px 12px;
+    }
+
+    .field label {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .field label .cat {
+      font-size: 11px;
+      color: var(--muted2);
+      border: 1px solid var(--stroke2);
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(233, 237, 245, 0.70);
+      white-space: nowrap;
+    }
+
+    /* === Unit label pill (only the small % / mg/kg / etc chip) === */
+    .field label .cat {
+      background: rgb(220, 245, 225);
+      /* light green fill */
+      border-color: rgb(160, 215, 170);
+      /* soft green border */
+      color: rgb(35, 95, 55);
+      /* dark green text */
+      font-weight: 800;
+    }
+
+
+    input,
+    textarea {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--stroke2);
+      background: rgba(255, 255, 255, 0.95);
+      color: var(--text);
+      padding: 10px 10px;
+      font-size: 13px;
+      outline: none;
+    }
+
+    textarea {
+      min-height: 84px;
+      resize: vertical
+    }
+
+    .small {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.55
+    }
+
+    .mutedBox {
+      border: 1px dashed rgba(47, 111, 181, 0.28);
+      border-radius: 14px;
+      padding: 12px 12px;
+      background: linear-gradient(180deg, rgba(47, 111, 181, 0.10), rgba(255, 255, 255, 0.92));
+      color: #111827;
+      font-size: 13px;
+      line-height: 1.6;
+      white-space: pre-line;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 11px;
+      border-radius: 999px;
+      border: 1px solid var(--stroke2);
+      background: rgba(255, 255, 255, 0.85);
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    .chip .k {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      color: var(--muted2)
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 7px 11px;
+      font-weight: 950;
+      font-size: 12px;
+      letter-spacing: 0.25px;
+      border: 1px solid var(--stroke2);
+      background: rgba(233, 237, 245, 0.85);
+      text-transform: uppercase;
+      color: var(--text);
+    }
+
+    .pill.ok {
+      background: rgba(58, 143, 75, 0.18);
+      border-color: rgba(58, 143, 75, 0.35);
+      color: #1f5f2f
+    }
+
+    .pill.warn {
+      background: rgba(215, 122, 31, 0.18);
+      border-color: rgba(215, 122, 31, 0.35);
+      color: #7a3f0a
+    }
+
+    .pill.bad {
+      background: rgba(239, 68, 68, 0.10);
+      border-color: rgba(239, 68, 68, 0.35);
+      color: #991b1b
+    }
+
+    .pill.blue {
+      background: rgba(60, 100, 177, 0.18);
+      border-color: rgba(60, 100, 177, 0.35);
+      color: #25408c
+    }
+
+
+    .pathGrid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px
+    }
+
+    @media (max-width:980px) {
+      .pathGrid {
+        grid-template-columns: 1fr
+      }
+    }
+
+    .pathCard {
+      position: relative;
+      border: 1px solid rgba(31, 41, 55, 0.10);
+      box-shadow: 0 10px 24px rgba(28, 38, 63, 0.10);
+      overflow: hidden;
+      border-radius: 18px;
+      padding: 14px;
+      background: linear-gradient(180deg, rgba(47, 111, 181, 0.07), rgba(255, 255, 255, 1) 60%);
+    }
+
+    .pathCard::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 6px;
+      border-radius: 18px 0 0 18px;
+      background: rgba(47, 111, 181, 0.55);
+    }
+
+    .pathCard.path-rp {
+      background: linear-gradient(180deg, rgba(58, 143, 75, 0.10), rgba(255, 255, 255, 1) 60%)
+    }
+
+    .pathCard.path-rp::before {
+      background: rgba(58, 143, 75, 0.60)
+    }
+
+    .pathCard.path-awd {
+      background: linear-gradient(180deg, rgba(215, 122, 31, 0.10), rgba(255, 255, 255, 1) 60%)
+    }
+
+    .pathCard.path-awd::before {
+      background: rgba(215, 122, 31, 0.60)
+    }
+
+    .pathCard.path-bio {
+      background: linear-gradient(180deg, rgba(60, 100, 177, 0.10), rgba(255, 255, 255, 1) 60%)
+    }
+
+    .pathCard.path-bio::before {
+      background: rgba(60, 100, 177, 0.60)
+    }
+
+    .pathCard.path-erw {
+      background: linear-gradient(180deg, rgba(15, 118, 110, 0.10), rgba(255, 255, 255, 1) 60%)
+    }
+
+    .pathCard.path-erw::before {
+      background: rgba(15, 118, 110, 0.60)
+    }
+
+    .pathTop {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 12px
+    }
+
+    .pathName {
+      font-weight: 1000;
+      font-size: 15px;
+      margin: 0;
+      color: var(--text)
+    }
+
+    .pathMeta {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end
+    }
+
+    .list {
+      margin: 8px 0 0;
+      padding-left: 16px;
+      color: rgba(31, 41, 55, 0.78);
+      font-size: 13px;
+      line-height: 1.6
+    }
+
+    .flag-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      color: #0f172a;
+      font-size: 12px;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .flag-good {
+      background: #DCFCE7;
+      border-color: #86EFAC;
+      color: #166534
+    }
+
+    .flag-bad {
+      background: #FEE2E2;
+      border-color: #FCA5A5;
+      color: #991B1B
+    }
+
+    .flag-neutral {
+      background: #F1F5F9;
+      border-color: #CBD5E1;
+      color: #334155
+    }
+
+    .panel {
+      display: none
+    }
+
+    .panel.active {
+      display: block
+    }
+
+    .foot {
+      margin-top: 14px;
+      font-size: 12px;
+      color: rgba(31, 41, 55, 0.45);
+      text-align: center
+    }
+
+    /* Data entry field title (e.g. Sand fraction) */
+    .field>label>span:first-child {
+      font-weight: 800;
+      /* bold */
+      color: rgb(128, 0, 32);
+      /* maroon */
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app">
+    <!-- Top Bar -->
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="titleblock">
+          <div class="h1">Soil Carbon Pathway-Optimization System (SCP-OS) v1.0</div>
+        </div>
+      </div>
+      <div class="status-pill">
+        <div id="statusDot" class="dot"></div>
+        <div id="statusText" class="status-text">Loading CPOS_Lite tables…</div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs" role="tablist" aria-label="CP-OS stages">
+      <button class="tab active" role="tab" aria-selected="true" data-step="0" onclick="goStep(0)">
+        <span class="badgeNum">0</span>
+        <span class="tabText">
+          <span class="label">Adaptive Questionnaire (Fast Setup)</span>
+          <span class="desc">Auto-fill Step 1 inputs</span>
+        </span>
+      </button>
+
+      <button class="tab" role="tab" aria-selected="false" data-step="1" onclick="goStep(1)">
+        <span class="badgeNum">1</span>
+        <span class="tabText">
+          <span class="label">Land and Management context</span>
+          <span class="desc">Enter values (auto-classify)</span>
+        </span>
+      </button>
+
+      <button class="tab" role="tab" aria-selected="false" data-step="2" onclick="goStep(2)">
+        <span class="badgeNum">2</span>
+        <span class="tabText">
+          <span class="label">Carbon Opportunity Analysis</span>
+          <span class="desc">Scores • Eligibility • MRV tier</span>
+        </span>
+      </button>
+
+      <button class="tab" role="tab" aria-selected="false" data-step="3" onclick="goStep(3)">
+        <span class="badgeNum">3</span>
+        <span class="tabText">
+          <span class="label">Decision Summary</span>
+          <span class="desc">Stack + Save</span>
+        </span>
+      </button>
+    </div>
+
+    <!-- PANELS -->
+    <!-- ✅ ADD THIS ENTIRE LANGUAGE SELECTOR BLOCK -->
+    <div
+      style="margin-bottom:20px;padding:12px;background:rgba(255,255,255,0.95);border-radius:12px;border:1px solid var(--stroke2)">
+      <label style="font-weight:600;margin-right:12px;font-size:14px">Language / भाषा:</label>
+      <label style="margin-right:16px;cursor:pointer">
+    <input type="radio" name="language" value="EN" id="langEN" checked> English
+  </label>
+      <label style="cursor:pointer">
+    <input type="radio" name="language" value="HI" id="langHI"> हिन्दी (Hindi)
+  </label>
+    </div>
+    <!-- ✅ END OF LANGUAGE SELECTOR -->
+
+
+    <div id="panel0" class="panel active">
+      <div class="grid">
+        <!-- Left: questionnaire -->
+        <div class="card">
+          <div class="cardHeader">
+            <h3 class="h2">Adaptive Questionnaire</h3>
+            <div class="hint"> about 50 Q - Fast setup - Auto-fills Step 1</div>
+          </div>
+          <div class="cardBody">
+            <div class="small" id="qProgress">Answered 0 / target 20</div>
+            <div style="margin-top:10px" class="mutedBox" id="qQuestionText">Click Start to begin the questionnaire.
+            </div>
+            <div id="qHelpText" class="small" style="margin-top:8px"></div>
+            <div id="qAnswerBox" style="margin-top:10px"></div>
+
+            <div id="qNavStatus" class="small" style="margin-top:8px"></div>
+
+            <div style="margin-top:12px" class="btnRow">
+              <button class="btn ghost" id="btnQStart" onclick="qStart()">Start</button>
+              <button class="btn ghost" id="btnQBack" onclick="qBack()" disabled>Back</button>
+              <button class="btn ghost" id="btnQSkip" onclick="qSkip()" disabled>Skip</button>
+              <button class="btn primary" id="btnQNext" onclick="qNext()" disabled>Next</button>
+              <button class="btn primary" id="btnQFinish" onclick="qFinish()" disabled>Finish</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: derived signals + auto-fill -->
+        <div class="card">
+          <div class="cardHeader">
+            <h3 class="h2">Derived Signals + Auto-filled Factors</h3>
+            <div class="hint">Questionnaire explainability</div>
+          </div>
+          <div class="cardBody">
+            <div id="qDerivedBox" class="mutedBox">Signals and auto-filled factors will appear here.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="panel1" class="panel">
+      <div class="grid">
+        <!-- Left -->
+        <div class="card">
+          <div class="cardHeader">
+            <h3 class="h2">Inputs</h3>
+            <div class="hint">Grouped by Factor_Category • Numeric entry auto-classifies</div>
+          </div>
+          <div class="cardBody">
+            <div class="formGrid" id="factorForm"></div>
+
+            <div id="evalGate" style="margin-top:12px;">
+              <div class="btnRow">
+                <button class="btn ghost" onclick="clearSelections()">Clear</button>
+                <button class="btn primary" id="btnEvaluate" onclick="evaluateAndGo()" disabled>Evaluate &rarr </button>
+              </div>
+              <div id="evalGateHint" class="small" style="margin-top:8px"></div>
+            </div>
+
+            <div style="margin-top:10px" class="small" id="selectionHint">
+              Tip: Enter any soil + climate + management values you have. You can evaluate even with partial inputs.
+            </div>
+          </div>
+        </div>
+
+        <!-- Right -->
+        <div class="card">
+        <div class="cardHeader">
+          <h3 class="h2">Explainability</h3>
+          <div class="hint">Weights &times desirability + Pathway_context</div>
+        </div>
+        <div class="cardBody">
+
+            <div id="notesBox" class="mutedBox">
+              Enter values to view class, desirability, and pathway context here.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="panel2" class="panel">
+      <div class="grid">
+        <!-- Left: results -->
+        <div class="card">
+          <div class="cardHeader">
+            <h3 class="h2">Pathway Screening</h3>
+            <div class="hint">Computed from CPOS_Lite_Bounds + CPOS_Lite_Desirability + CPOS_Lite_Weights</div>
+          </div>
+          <div class="cardBody">
+            <div id="screeningGrid" class="pathGrid"></div>
+
+            <div style="margin-top:12px" class="btnRow">
+              <button class="btn ghost" onclick="goStep(1)">← Back</button>
+              <button class="btn primary" onclick="goStep(3)">Decision Summary &rarr</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: selection recap -->
+        <div class="card">
+          <div class="cardHeader">
+            <h3 class="h2">Current Inputs</h3>
+            <div class="hint">Observed_Value + classified Class_Label</div>
+          </div>
+          <div class="cardBody">
+            <div id="selectionRecap" class="chips"></div>
+            <div style="margin-top:12px" class="mutedBox" id="mrvStrip">
+              MRV focus strip will appear after evaluation.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="panel3" class="panel">
+      <div class="grid">
+        <!-- Left: decision summary -->
+        <div class="card">
+          <div class="cardHeader">
+            <h3 class="h2">Decision Summary</h3>
+            <div class="hint">Recommended stack + key cautions</div>
+          </div>
+          <div class="cardBody">
+            <div id="headlineBox" class="mutedBox">Evaluate at least one input to generate a decision summary.</div>
+
+            <div class="small" style="margin-bottom:8px;color:var(--muted)"><b>Recommended</b></div>
+            <div id="recStack" class="chips" style="margin-bottom:12px"></div>
+
+            <div class="small" style="margin-bottom:8px;color:var(--muted)"><b>Conditional</b></div>
+            <div id="condStack" class="chips" style="margin-bottom:12px"></div>
+
+            <div class="small" style="margin-bottom:8px;color:var(--muted)"><b>Excluded</b></div>
+            <div id="exclStack" class="chips" style="margin-bottom:8px"></div>
+
+            <div style="margin-top:12px" class="btnRow">
+              <button class="btn ghost" onclick="goStep(2)">← Back</button>
+              <button class="btn primary" onclick="openSaveDrawer()">Save Assessment</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: save drawer -->
+        <div class="card">
+          <div class="cardHeader">
+            <h3 class="h2">Save Assessment</h3>
+            <div class="hint">Optional (Apps Script)</div>
+          </div>
+          <div class="cardBody">
+            <div class="small" style="margin-bottom:10px">
+              Optional in v1.0. If your assessment sheet + backend function is ready, fill fields and save.
+            </div>
+
+            <div class="formGrid">
+              <div class="field">
+                <label>Client_ID <span class="cat">meta</span></label>
+                <input id="metaClientId" placeholder="Default">
+              </div>
+              <div class="field">
+                <label>Site_ID <span class="cat">meta</span></label>
+                <input id="metaSiteId" placeholder="SITE-001">
+              </div>
+              <div class="field">
+                <label>Site_Name <span class="cat">meta</span></label>
+                <input id="metaSiteName" placeholder="Village / Farm / Plot">
+              </div>
+              <div class="field">
+                <label>Crop_System <span class="cat">meta</span></label>
+                <input id="metaCropSystem" placeholder="Rice paddy / Upland cereal / etc.">
+              </div>
+              <div class="field">
+                <label>Latitude <span class="cat">meta</span></label>
+                <input id="metaLat" placeholder="26.1234">
+              </div>
+              <div class="field">
+                <label>Longitude <span class="cat">meta</span></label>
+                <input id="metaLon" placeholder="81.9876">
+              </div>
+              <div class="field">
+                <label>State <span class="cat">meta</span></label>
+                <input id="metaState" placeholder="UP">
+              </div>
+              <div class="field">
+                <label>District <span class="cat">meta</span></label>
+                <input id="metaDistrict" placeholder="Sonbhadra">
+              </div>
+              <div class="field" style="grid-column:1/-1">
+                <label>Notes <span class="cat">meta</span></label>
+                <textarea id="metaNotes" placeholder="Any assumptions, site notes, constraints…"></textarea>
+              </div>
+            </div>
+
+            <div style="margin-top:12px" class="btnRow">
+              <button class="btn ghost" onclick="fillDemoMeta()">Fill Demo</button>
+              <button class="btn primary" onclick="saveAssessment()">Save &rarr Sheet</button>
+            </div>
+
+            <div id="saveStatus" style="margin-top:10px" class="small"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="foot">CP-OS v1.0 • CPOS-Lite (Bounds + Desirability + Weights)</div>
+  </div>
+
+  <script>
+    // ============================================================
+    // ✅ CPOS-LITE FRONTEND (DROP-IN) + QUESTIONNAIRE ENGINE
+    // ============================================================
+
+    function setStatus(ok, msg) {
+      const dot = document.getElementById('statusDot');
+      const text = document.getElementById('statusText');
+      dot.classList.remove('ok','bad');
+      dot.classList.add(ok ? 'ok' : 'bad');
+      text.textContent = msg || (ok ? 'Ready' : 'Error');
+    }
+
+    function goStep(n) {
+      document.querySelectorAll('.tab').forEach(el => {
+        const isActive = Number(el.dataset.step) === Number(n);
+        el.classList.toggle('active', isActive);
+        el.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
+      document.getElementById('panel0').classList.toggle('active', n === 0);
+      document.getElementById('panel1').classList.toggle('active', n === 1);
+      document.getElementById('panel2').classList.toggle('active', n === 2);
+      document.getElementById('panel3').classList.toggle('active', n === 3);
+    }
+
+    function escapeHtml(s){
+      return String(s ?? '')
+        .replaceAll('&','&amp;')
+        .replaceAll('<','&lt;')
+        .replaceAll('>','&gt;')
+        .replaceAll('"','&quot;')
+        .replaceAll("'","&#039;");
+    }
+
+    function makePill(type, text) {
+      const span = document.createElement('span');
+      span.className = 'pill ' + (type || '');
+      span.textContent = text;
+      return span;
+    }
+
+    function makeChip(label, value) {
+      const div = document.createElement('div');
+      div.className = 'chip';
+      div.innerHTML = `<span class="k">${escapeHtml(label)}</span> <span>${escapeHtml(value)}</span>`;
+      return div;
+    }
+
+    function toNum(v){
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    }
+    function toBool(v){
+      if (typeof v === 'boolean') return v;
+      const s = String(v || '').trim().toLowerCase();
+      return (s === 'true' || s === '1' || s === 'yes' || s === 'y');
+    }
+
+    function normKey_(s) {
+      return String(s ?? '')
+        .normalize('NFKC')
+        .trim()
+        .replace(/\u00A0/g, ' ')
+        .replace(/[–—]/g, '-')
+        .replace(/\s+/g, ' ');
+    }
+
+    function normPathway_(p) {
+      const s = normKey_(p);
+      const k = s.toLowerCase();
+      if (k === 'rp-soc' || k === 'rp soc' || k === 'regenerative ag' || k === 'regenerative agriculture') return 'RP-SOC';
+      if (k === 'awd' || k === 'awd-ch4' || k === 'awd-ch₄' || k === 'awd ch4') return 'AWD-CH₄';
+      if (k === 'biochar') return 'BIOCHAR';
+      if (k === 'erw') return 'ERW';
+      return s;
+    }
+
+    function safeCall_(label, fn) {
+      try {
+        fn();
+      } catch (err) {
+        console.error(`[CPOS] ${label} failed`, err);
+        setStatus(false, `${label} error: ${err?.message || err}`);
+      }
+    }
+
+    // ---------------------------
+    // CPOS-Lite state + indexes
+    // ---------------------------
+    const CPOSL = {
+      language: 'EN', // Default language: 'EN' or 'HI'
+
+      PATHWAYS: ['RP-SOC', 'AWD-CH₄', 'BIOCHAR', 'ERW'],
+      data: { bounds:[], desirability:[], weights:[] },
+      idx: {
+        boundsByVar: new Map(),
+        factorsByCat: new Map(),
+        desirByVarPathClass: new Map(),
+        weightByVarPath: new Map()
+      },
+      selections: {},
+      computed: {},
+      lastResults: null,
+      q: {
+        bank: [],
+        options: [],
+        derivationRules: [],
+        routingRules: [],
+        signalToLiteMap: [],
+        liteBounds: [],
+        idx: {
+          qBankById: new Map(),
+          qOptionsByQ: new Map(),
+          qDerivByWhenQ: new Map(),
+          qRoutesByCurrentQ: new Map(),
+          qSignalMapByKey: new Map(),
+          startQuestions: []
+        }
+      },
+      qState: {
+        mode: 'BASIC',
+        sessionId: '',
+        answered: {},
+        signals: {},
+        queue: [],
+        current: null,
+        history: [],
+        answeredCount: 0,
+        minTarget: 20,
+        maxCap: 50,
+        stop: false
+      }
+
+    };
+
+
+// 👉 PASTE CONSISTENCY_RULES HERE 👈
+const CONSISTENCY_RULES = [
+  // ═══════════════════════════════════════════════════════════
+  // SOIL PHYSICS RULES (7 rules)
+  // ═══════════════════════════════════════════════════════════
+  
+  {
+    id: 'RULE_SOIL_01',
+    name: 'Drainage-Texture Contradiction',
+    check: function(signals) {
+      const drainage = signals['DRAINAGE']?.value;
+      const texture = signals['TEXTURE']?.value;
+      
+      if ((drainage === 'POOR' || drainage === 'VERYPOOR') && 
+          (texture === 'SANDY' || texture === 'LIGHTSANDY')) {
+        return {
+          valid: false,
+          severity: 'HIGH',
+          message: 'Sandy soils typically drain quickly. If water stays for 2-3 days, your soil likely has some clay content. Would you like to reconsider?',
+          conflictingQuestions: ['Q_S015', 'Q_S008']
+        };
+      }
+      return { valid: true };
+    }
+  },
+  
+  {
+    id: 'RULE_SOIL_02',
+    name: 'Compaction-Tillage Contradiction',
+    check: function(signals) {
+      const compaction = signals['COMPACTION']?.value;
+      const tillage = signals['TILLAGE']?.value;
+      
+      if (compaction === 'HIGH' && tillage === 'ZEROTILL') {
+        return {
+          valid: false,
+          severity: 'MEDIUM',
+          message: 'Zero-till practices can initially cause surface compaction, but after 2-3 years it typically improves. How long have you been practicing zero-till?',
+          conflictingQuestions: ['Q_M021', 'Q_M009']
+        };
+      }
+      return { valid: true };
+    }
+  },
+  
+  {
+    id: 'RULE_SOIL_03',
+    name: 'Bulk Density - SOC Contradiction',
+    check: function(signals) {
+      const bd = toNum(signals['BULK_DENSITY']?.value);
+      const soc = toNum(signals['SOC_MEASURED']?.value);
+      
+      // High BD (>1.6) + High SOC (>3%) = rare in mineral soils
+      if (bd && bd > 1.6 && soc && soc > 3.0) {
+        return {
+          valid: false,
+          severity: 'HIGH',
+          message: 'High bulk density (>1.6 g/cm³) with high soil carbon (>3%) is unusual. Compacted soils typically have lower organic matter. Please verify both values.',
+          conflictingQuestions: ['Q_S004', 'Q_S003']
+        };
+      }
+      
+      // Very high BD check
+      if (bd && bd > 2.0) {
+        return {
+          valid: false,
+          severity: 'HIGH',
+          message: 'Bulk density above 2.0 g/cm³ is extremely rare (close to rock density). Please verify this measurement.',
+          conflictingQuestions: ['Q_S004']
+        };
+      }
+      
+      return { valid: true };
+    }
+  },
+  
+  {
+    id: 'RULE_SOIL_04',
+    name: 'pH Extreme Values',
+    check: function(signals) {
+      const ph = toNum(signals['PH']?.value);
+      
+      if (ph && ph < 3.5) {
+        return {
+          valid: false,
+          severity: 'MEDIUM',
+          message: 'Soil pH below 3.5 is extremely acidic (rare outside acid sulfate soils or mine spoils). Please confirm this value.',
+          conflictingQuestions: ['Q_S005']
+        };
+      }
+      
+      if (ph && ph > 9.5) {
+        return {
+          valid: false,
+          severity: 'MEDIUM',
+          message: 'Soil pH above 9.5 is extremely alkaline (rare outside sodic soils). Please confirm this value.',
+          conflictingQuestions: ['Q_S005']
+        };
+      }
+      
+      return { valid: true };
+    }
+  },
+  
+  {
+    id: 'RULE_SOIL_05',
+    name: 'Clay Content - Texture Consistency',
+    check: function(signals) {
+      const clay = toNum(signals['CLAY_PERCENT']?.value);
+      const texture = signals['TEXTURE']?.value;
+      
+      // Sandy texture but high clay
+      if (clay && clay > 25 && 
+          (texture === 'SANDY' || texture === 'LIGHTSANDY')) {
+        return {
+          valid: false,
+          severity: 'MEDIUM',
+          message: 'Clay content >25% is inconsistent with sandy texture. Soils with this clay content are typically loamy or clayey. Please review your values.',
+          conflictingQuestions: ['Q_S007', 'Q_S008']
+        };
+      }
+      
+      // Clayey texture but low clay
+      if (clay && clay < 30 && 
+          (texture === 'CLAYEY' || texture === 'HEAVYCLAY')) {
+        return {
+          valid: false,
+          severity: 'MEDIUM',
+          message: 'Clay soils typically have >30% clay content. Your reported value suggests loamy texture. Please verify.',
+          conflictingQuestions: ['Q_S007', 'Q_S008']
+        };
+      }
+      
+      return { valid: true };
+    }
+  },
+  
+  {
+    id: 'RULE_SOIL_06',
+    name: 'Sand + Clay Fraction Sum Check',
+    check: function(signals) {
+      const sand = toNum(signals['SAND_FRACTION']?.value);
+      const clay = toNum(signals['CLAY_FRACTION']?.value);
+      
+      // Sand + Clay cannot exceed 100%
+      if (sand && clay && (sand + clay > 100)) {
+        return {
+          valid: false,
+          severity: 'HIGH',
+          message: 'Sand (' + sand + '%) + Clay (' + clay + '%) = ' + (sand + clay) + '%, which exceeds 100%. Soil particle fractions must sum to ≤100%. Please verify your values.',
+          conflictingQuestions: ['Q_S006', 'Q_S007']
+        };
+      }
+      
+      // If sand + clay > 90%, silt must be very low (check consistency)
+      if (sand && clay && (sand + clay > 90)) {
+        return {
+          valid: false,
+          severity: 'MEDIUM',
+          message: 'Sand + Clay totals ' + (sand + clay) + '%, leaving only ' + (100 - sand - clay) + '% for silt. This is unusual. Please verify your sand and clay percentages.',
+          conflictingQuestions: ['Q_S006', 'Q_S007']
+        };
+      }
+      
+      return { valid: true };
+    }
+  },
+  
+  {
+    id: 'RULE_SOIL_07',
+    name: 'Steep Slope Without Erosion Control',
+    check: function(signals) {
+      const slope = toNum(signals['SLOPE_PERCENT']?.value);
+      const tillage = signals['TILLAGE_INTENSITY']?.value;
+      const coverCrop = signals['COVER_CROP']?.value;
+      const erosion = signals['EROSION']?.value;
+      
+      // Steep slope (>8%) + intensive tillage + no cover crops + high erosion
+      if (slope && slope > 8 && 
+          tillage === 'INTENSIVE' && 
+          coverCrop !== 'YES' &&
+          (erosion === 'HIGH' || erosion === 'SEVERE')) {
+        return {
+          valid: false,
+          severity: 'HIGH',
+          message: 'Steep slope (' + slope + '%) with intensive tillage and no cover crops causes severe erosion. This makes RP-SOC pathway unsuitable. Consider contour farming, terracing, or switching to zero-till with cover crops.',
+          conflictingQuestions: ['Q_S014', 'Q_M009', 'Q_M013', 'Q_S016']
+        };
+      }
+      
+      return { valid: true };
+    }
+  },
+  
+  // ═══════════════════════════════════════════════════════════
+  // NUMERIC BOUNDS RULES (1 rule)
+  // ═══════════════════════════════════════════════════════════
+  
+  {
+    id: 'RULE_NUMERIC_01',
+    name: 'SOC Physical Bounds',
+    check: function(signals) {
+      const socSignal = signals['SOC_MEASURED'];
+      const socValue = socSignal ? parseFloat(socSignal.value) : null;
+      
+      if (socValue && socValue > 10) {
+        return {
+          valid: false,
+          severity: 'HIGH',
+          message: 'Soil organic carbon above 10% is rare in mineral soils (could be peat/organic soil, or measurement error). Please verify the value from your report.',
+          conflictingQuestions: ['Q_S003']
+        };
+      }
+      
+      if (socValue && socValue < 0.1) {
+        return {
+          valid: false,
+          severity: 'MEDIUM',
+          message: 'SOC below 0.1% indicates extremely degraded soil. Please confirm this value is correct.',
+          conflictingQuestions: ['Q_S003']
+        };
+      }
+      
+      return { valid: true };
+    }
+  },
+  
+  // ═══════════════════════════════════════════════════════════
+  // CROP-CLIMATE RULES (2 rules)
+  // ═══════════════════════════════════════════════════════════
+  
+  {
+    id: 'RULE_CROP_01',
+    name: 'Rice-Rainfed Contradiction',
+    check: function(signals) {
+      const hasCrop = function(cropName) {
+        return Object.keys(signals).some(function(k) {
+          return k.includes('CROP') && signals[k].value && 
+                 String(signals[k].value).toUpperCase().includes(cropName);
+        });
+      };
+      
+      const irrigation = signals['IRRIGATION']?.value;
+      
+      if (hasCrop('RICE') && irrigation === 'NONE') {
+        return {
+          valid: false,
+          severity: 'MEDIUM',
+          message: 'Rice usually needs consistent water. Are you growing upland/aerobic rice, or is your area naturally flooded during monsoon?',
+          conflictingQuestions: ['Q_A1', 'Q_M015']
+        };
+      }
+      return { valid: true };
+    }
+  },
+  
+  {
+    id: 'RULE_CROP_02',
+    name: 'Crop Yield Outlier Detection',
+    check: function(signals) {
+      const yieldVal = toNum(signals['CROP_YIELD']?.value);
+      const crop = signals['CROP']?.value;
+      
+      // Define realistic yield ranges (t/ha)
+      const yieldBounds = {
+        'RICE': { min: 0.5, max: 12 },
+        'WHEAT': { min: 0.5, max: 10 },
+        'MAIZE': { min: 0.5, max: 15 },
+        'SUGARCANE': { min: 10, max: 150 },
+        'COTTON': { min: 0.3, max: 5 },
+        'SOYBEAN': { min: 0.3, max: 5 }
+      };
+      
+      if (yieldVal && crop && yieldBounds[crop]) {
+        const bounds = yieldBounds[crop];
+        
+        if (yieldVal > bounds.max) {
+          return {
+            valid: false,
+            severity: 'MEDIUM',
+            message: 'The reported ' + crop.toLowerCase() + ' yield (' + yieldVal + ' t/ha) is exceptionally high. Please verify this value is correct and the unit is tonnes per hectare.',
+            conflictingQuestions: ['Q_A003']
+          };
+        }
+        
+        if (yieldVal < bounds.min) {
+          return {
+            valid: false,
+            severity: 'MEDIUM',
+            message: 'The reported ' + crop.toLowerCase() + ' yield (' + yieldVal + ' t/ha) is very low. Please confirm this value and check if you meant kg/ha instead of t/ha.',
+            conflictingQuestions: ['Q_A003']
+          };
+        }
+      }
+      
+      return { valid: true };
+    }
+  },
+  
+  // ═══════════════════════════════════════════════════════════
+  // CLIMATE-WATER BALANCE RULES (2 rules)
+  // ═══════════════════════════════════════════════════════════
+  
+  {
+    id: 'RULE_CLIMATE_01',
+    name: 'Rainfall-ET Demand Water Deficit',
+    check: function(signals) {
+      const rainfall = toNum(signals['ANNUAL_RAINFALL']?.value); // mm/yr
+      const etDemand = toNum(signals['EVAPOTRANSPIRATION_DEMAND']?.value); // mm/yr
+      const irrigation = signals['IRRIGATION_INTENSITY']?.value;
+      
+      // High ET (>1600mm) + Low rainfall (<600mm) + No irrigation = water stress
+      if (etDemand && etDemand > 1600 && 
+          rainfall && rainfall < 600 && 
+          irrigation === 'RAINFED') {
+        return {
+          valid: false,
+          severity: 'HIGH',
+          message: 'ET demand (' + etDemand + ' mm/yr) exceeds rainfall (' + rainfall + ' mm/yr) with no irrigation. Severe water deficit makes most crops impossible. Please verify climate and irrigation data.',
+          conflictingQuestions: ['Q_C002', 'Q_C005', 'Q_M015']
+        };
+      }
+      
+      return { valid: true };
+    }
+  },
+  
+  {
+    id: 'RULE_CLIMATE_02',
+    name: 'High Rainfall with Intensive Irrigation',
+    check: function(signals) {
+      const rainfall = toNum(signals['ANNUAL_RAINFALL']?.value);
+      const irrigation = signals['IRRIGATION_INTENSITY']?.value;
+      
+      // High rainfall (>1600mm) + intensive irrigation (>4 times) = wasteful/unusual
+      if (rainfall && rainfall > 1600 && irrigation === 'INTENSIVE') {
+        return {
+          valid: false,
+          severity: 'LOW',
+          message: 'Your annual rainfall (' + rainfall + ' mm) is high, but you report intensive irrigation. This is unusual unless irrigating only in dry season. Please confirm.',
+          conflictingQuestions: ['Q_C002', 'Q_M015']
+        };
+      }
+      
+      return { valid: true };
+    }
+  },
+  
+  // ═══════════════════════════════════════════════════════════
+  // NUTRIENT MANAGEMENT RULES (4 rules)
+  // ═══════════════════════════════════════════════════════════
+  
+  {
+    id: 'RULE_MGT_01',
+    name: 'High Nitrogen - Low Yield Contradiction',
+    check: function(signals) {
+      const nRate = toNum(signals['NITROGEN_RATE']?.value); // kg/ha
+      const yieldVal = toNum(signals['CROP_YIELD']?.value); // t/ha
+      const crop = signals['CROP']?.value;
+      
+      // High N (>200 kg/ha) but low yield (<3 t/ha) for major cereals
+      if (nRate && nRate > 200 && yieldVal && yieldVal < 3 && 
+          (crop === 'RICE' || crop === 'WHEAT' || crop === 'MAIZE')) {
+        return {
+          valid: false,
+          severity: 'HIGH',
+          message: 'High nitrogen application (' + nRate + ' kg/ha) with low yield (' + yieldVal + ' t/ha) suggests inefficiency or measurement error. Please verify both values.',
+          conflictingQuestions: ['Q_M019', 'Q_A003']
+        };
+      }
+      
+      // Extreme N rate check
+      if (nRate && nRate > 400) {
+        return {
+          valid: false,
+          severity: 'HIGH',
+          message: 'Nitrogen rate above 400 kg/ha is exceptionally high and environmentally concerning. Please verify this value.',
+          conflictingQuestions: ['Q_M019']
+        };
+      }
+      
+      return { valid: true };
+    }
+  },
+  
+  {
+    id: 'RULE_MGT_02',
+    name: 'Organic Amendment Rate Check',
+    check: function(signals) {
+      const organicRate = toNum(signals['ORGANIC_RATE']?.value); // t/ha
+      
+      if (organicRate && organicRate > 15) {
+        return {
+          valid: false,
+          severity: 'MEDIUM',
+          message: 'Organic amendment rate above 15 t/ha is very high (labor/cost intensive). Typical rates are 5-10 t/ha. Please verify this value.',
+          conflictingQuestions: ['Q_M020']
+        };
+      }
+      
+      return { valid: true };
+    }
+  },
+  
+  {
+    id: 'RULE_MGT_03',
+    name: 'Zero Organic Input with High SOC',
+    check: function(signals) {
+      const organicRate = toNum(signals['ORGANIC_RATE']?.value);
+      const residue = signals['RESIDUE']?.value;
+      const soc = toNum(signals['SOC_MEASURED']?.value);
+      
+      // No organic inputs + all residue removed + high SOC = contradiction
+      if ((!organicRate || organicRate === 0) && 
+          residue === 'ALLREMOVED' && 
+          soc && soc > 3.0) {
+        return {
+          valid: false,
+          severity: 'MEDIUM',
+          message: 'High soil carbon (>3%) with complete residue removal and no organic inputs is unusual. Are you sure no compost, manure, or crop residues are retained?',
+          conflictingQuestions: ['Q_M020', 'Q_M012', 'Q_S003']
+        };
+      }
+      
+      return { valid: true };
+    }
+  },
+  
+  {
+    id: 'RULE_MGT_07',
+    name: 'Excessive Phosphorus Application',
+    check: function(signals) {
+      const pRate = toNum(signals['APPLIED_P2O5_RATE']?.value); // kg P2O5/ha/season
+      
+      // P2O5 rate > 120 kg/ha is excessive for most crops
+      if (pRate && pRate > 120) {
+        return {
+          valid: false,
+          severity: 'MEDIUM',
+          message: 'P₂O₅ application rate (' + pRate + ' kg/ha) is very high. Typical rates are 30-60 kg/ha. Excessive P can cause environmental pollution. Please verify.',
+          conflictingQuestions: ['Q_M018']
+        };
+      }
+      
+      return { valid: true };
+    }
+  },
+  
+  // ═══════════════════════════════════════════════════════════
+  // MANAGEMENT LOGIC RULES (3 rules)
+  // ═══════════════════════════════════════════════════════════
+  
+  {
+    id: 'RULE_MGT_04',
+    name: 'High Erosion with Established Zero-Till',
+    check: function(signals) {
+      const erosion = signals['EROSION']?.value;
+      const tillage = signals['TILLAGE']?.value;
+      const duration = toNum(signals['ZEROTILL_YEARS']?.value);
+      
+      // High erosion + long-term zero-till = contradicts conservation benefits
+      if ((erosion === 'HIGH' || erosion === 'SEVERE') && 
+          tillage === 'ZEROTILL' && duration && duration >= 3) {
+        return {
+          valid: false,
+          severity: 'MEDIUM',
+          message: 'Zero-till for 3+ years should reduce erosion. High erosion with established no-till suggests slope issues or lack of ground cover. Do you maintain continuous cover crops?',
+          conflictingQuestions: ['Q_S016', 'Q_M009', 'Q_M010']
+        };
+      }
+      
+      return { valid: true };
+    }
+  },
+  
+  {
+    id: 'RULE_MGT_05',
+    name: 'Residue Removed but Cover Crops Active',
+    check: function(signals) {
+      const residue = signals['RESIDUE']?.value;
+      const coverCrop = signals['COVER_CROP']?.value;
+      
+      // All residue removed + active cover cropping = unusual
+      if (residue === 'ALLREMOVED' && coverCrop === 'YES') {
+        return {
+          valid: false,
+          severity: 'MEDIUM',
+          message: 'You mentioned removing all crop residue but also growing cover crops. Please clarify: Do you remove main crop residue but incorporate cover crops, or do you remove both?',
+          conflictingQuestions: ['Q_M012', 'Q_M013']
+        };
+      }
+      
+      return { valid: true };
+    }
+  },
+  
+  {
+    id: 'RULE_MGT_06',
+    name: 'Tillage Intensity-Depth Consistency',
+    check: function(signals) {
+      const intensity = signals['TILLAGE_INTENSITY']?.value; // passes/season
+      const depth = toNum(signals['TILLAGE_DEPTH']?.value); // cm
+      
+      // Zero tillage (0 passes) but deep tillage depth
+      if (intensity === 'ZERO' && depth && depth > 5) {
+        return {
+          valid: false,
+          severity: 'HIGH',
+          message: 'Zero tillage means no mechanical soil disturbance, but you reported tillage depth of ' + depth + ' cm. Please clarify: Are you practicing true no-till (0 cm depth)?',
+          conflictingQuestions: ['Q_M009', 'Q_M011']
+        };
+      }
+      
+      // Intensive tillage (4+ passes) but shallow depth
+      if (intensity === 'INTENSIVE' && depth && depth < 5) {
+        return {
+          valid: false,
+          severity: 'MEDIUM',
+          message: 'Intensive tillage (4+ passes) with shallow depth (<5 cm) is unusual. Typical intensive tillage involves 10-20 cm depth. Please verify.',
+          conflictingQuestions: ['Q_M009', 'Q_M011']
+        };
+      }
+      
+      return { valid: true };
+    }
+  },
+  
+  {
+    id: 'RULE_MGT_08',
+    name: 'High Residue Quantity with High Removal',
+    check: function(signals) {
+      const residueQty = toNum(signals['RESIDUE_QUANTITY']?.value); // t/ha retained
+      const removalFrac = toNum(signals['HARVEST_REMOVAL_FRACTION']?.value); // 0-1
+      
+      // High residue retained (>4 t/ha) + high removal fraction (>0.6) = contradiction
+      if (residueQty && residueQty > 4 && 
+          removalFrac && removalFrac > 0.6) {
+        return {
+          valid: false,
+          severity: 'MEDIUM',
+          message: 'You report retaining ' + residueQty + ' t/ha residue, but removal fraction is ' + (removalFrac * 100).toFixed(0) + '%. If you remove >60% of biomass, retained residue should be <4 t/ha. Please clarify.',
+          conflictingQuestions: ['Q_M014', 'Q_M017']
+        };
+      }
+      
+      return { valid: true };
+    }
+  },
+  
+  // ═══════════════════════════════════════════════════════════
+  // TEMPORAL LOGIC RULES (1 rule)
+  // ═══════════════════════════════════════════════════════════
+  
+  {
+    id: 'RULE_TIME_01',
+    name: 'Practice Duration vs SOC Change',
+    check: function(signals) {
+      const duration = toNum(signals['PRACTICE_DURATION_YEARS']?.value);
+      const soc = toNum(signals['SOC_INITIAL']?.value);
+      const socChange = signals['SOC_CHANGE_OBSERVED']?.value; // if you track this
+      
+      // Practice <2 years but claiming high SOC (>1%)
+      // SOC takes 3-5 years to change significantly
+      if (duration && duration < 2 && soc && soc > 1.5) {
+        return {
+          valid: false,
+          severity: 'MEDIUM',
+          message: 'High SOC (' + soc + '%) after only ' + duration + ' years of practice is unusual. SOC changes typically require 3-5 years to accumulate. Was the soil already high in carbon before this practice?',
+          conflictingQuestions: ['Q_M022', 'Q_S002']
+        };
+      }
+      
+      return { valid: true };
+    }
+  },
+  
+  // ═══════════════════════════════════════════════════════════
+  // PATHWAY ELIGIBILITY RULES (1 rule)
+  // ═══════════════════════════════════════════════════════════
+  
+  {
+    id: 'RULE_PATH_01',
+    name: 'AWD Pathway Requires Flooded Rice',
+    check: function(signals) {
+      const hasCrop = function(cropName) {
+        return Object.keys(signals).some(function(k) {
+          return k.includes('CROP') && signals[k].value && 
+                 String(signals[k].value).toUpperCase().includes(cropName);
+        });
+      };
+      
+      const waterMgmt = signals['WATER_MANAGEMENT']?.value;
+      const irrigation = signals['IRRIGATION']?.value;
+      
+      // Check if user seems interested in AWD (high rice intensity + irrigation)
+      const riceDetected = hasCrop('RICE');
+      const hasIrrigation = irrigation && irrigation !== 'NONE';
+      
+      // If rice with irrigation but NOT flooded = can't use AWD
+      if (riceDetected && hasIrrigation && 
+          waterMgmt && waterMgmt !== 'CONTINUOUS_FLOOD' && 
+          waterMgmt !== 'FLOODED') {
+        return {
+          valid: false,
+          severity: 'LOW',
+          message: 'Note: Alternate Wetting & Drying (AWD) pathway only applies to continuously flooded rice paddies. Your system appears to be rainfed or aerobic rice, limiting AWD eligibility.',
+          conflictingQuestions: ['Q_A1', 'Q_M015']
+        };
+      }
+      
+      return { valid: true };
+    }
+  }
+];
+
+
+    // ---------------------------
+    // Backend loader (single call)
+    // ---------------------------
+    function getCPOSLiteTables() {
+      return new Promise((resolve, reject) => {
+        if (typeof google === 'undefined' || !google.script || !google.script.run) {
+          reject(new Error('Apps Script runtime not available (local mode).'));
+          return;
+        }
+        google.script.run
+          .withSuccessHandler(res => resolve(res || {}))
+          .withFailureHandler(err => reject(err))
+          .getCPOSLiteTables();
+      });
+    }
+
+    function getCPOSQuestionnaireConfig() {
+      return new Promise((resolve, reject) => {
+        if (typeof google === 'undefined' || !google.script || !google.script.run) {
+          reject(new Error('Apps Script runtime not available (local mode).'));
+          return;
+        }
+        google.script.run
+          .withSuccessHandler(res => resolve(res || {}))
+          .withFailureHandler(err => reject(err))
+          .getCPOSQuestionnaireConfig();
+      });
+    }
+
+    // ---------------------------
+    // Build indexes from 3 sheets
+    // ---------------------------
+    function buildIndexes_() {
+      CPOSL.idx.boundsByVar = new Map();
+      CPOSL.idx.factorsByCat = new Map();
+      CPOSL.idx.desirByVarPathClass = new Map();
+      CPOSL.idx.weightByVarPath = new Map();
+
+      for (const r of (CPOSL.data.bounds || [])) {
+        const varNameRaw = String(r.Variable_Name || '').trim();
+        const varKey = normKey_(varNameRaw);
+        if (!varKey) continue;
+
+        const factorCategoryRaw = String(r.Factor_Category || 'Other').trim();
+        const factorCategoryKey = normKey_(factorCategoryRaw);
+        const factorDisplay = String(r.Factor_Display_Name || varNameRaw).trim();
+
+        const f = CPOSL.idx.boundsByVar.get(varKey) || {
+          Variable_Name: varKey,
+          Variable_Name_Display: varNameRaw || varKey,
+          Factor_ID: normKey_(r.Factor_ID || ''),
+          Factor_Category: factorCategoryKey,
+          Factor_Category_Display: factorCategoryRaw || factorCategoryKey,
+          Factor_Display_Name: factorDisplay || varKey,
+          Unit: String(r.Unit || '').trim(),
+          classes: []
+        };
+
+        const classLabelRaw = String(r.Class_Label || '').trim();
+        const classKey = normKey_(classLabelRaw);
+        if (!classKey) continue;
+
+        f.classes.push({
+          Class_Order: toNum(r.Class_Order),
+          Class_Label: classKey,
+          Class_Label_Display: classLabelRaw || classKey,
+          Lower_Bound: toNum(r.Lower_Bound),
+          Upper_Bound: toNum(r.Upper_Bound),
+          Lower_Inclusive: toBool(r.Lower_Inclusive),
+          Upper_Inclusive: toBool(r.Upper_Inclusive)
+        });
+
+        CPOSL.idx.boundsByVar.set(varKey, f);
+      }
+
+      for (const [, f] of CPOSL.idx.boundsByVar.entries()) {
+        f.classes.sort((a, b) => (a.Class_Order ?? 0) - (b.Class_Order ?? 0));
+
+        const catKey = f.Factor_Category || 'Other';
+        if (!CPOSL.idx.factorsByCat.has(catKey)) {
+          CPOSL.idx.factorsByCat.set(catKey, { label: f.Factor_Category_Display || catKey, factors: [] });
+        }
+        CPOSL.idx.factorsByCat.get(catKey).factors.push(f);
+      }
+
+      for (const entry of CPOSL.idx.factorsByCat.values()) {
+        entry.factors.sort((a, b) => (a.Factor_Display_Name || '').localeCompare(b.Factor_Display_Name || ''));
+      }
+
+      for (const r of (CPOSL.data.desirability || [])) {
+        const varKey = normKey_(r.Variable_Name);
+        const pathway = normPathway_(r.Pathway);
+        const classKey = normKey_(r.Class_Label);
+        if (!varKey || !pathway || !classKey) continue;
+
+        const d = toNum(r.Desirability_0_1);
+        if (!Number.isFinite(d)) continue;
+
+        const key = `${varKey}||${pathway}||${classKey}`;
+        CPOSL.idx.desirByVarPathClass.set(key, {
+          d,
+          shape: String(r.Shape || '').trim(),
+          ctx: String(r.Pathway_Context || '').trim()
+        });
+      }
+
+      for (const r of (CPOSL.data.weights || [])) {
+        const varKey = normKey_(r.Variable_Name);
+        const pathway = normPathway_(r.Pathway);
+        if (!varKey || !pathway) continue;
+
+        const w = toNum(r.Sensitivity_Weight_0_10);
+        if (!Number.isFinite(w)) continue;
+
+        const key = `${varKey}||${pathway}`;
+        CPOSL.idx.weightByVarPath.set(key, w);
+      }
+
+      console.log('[CPOS] buildIndexes', {
+        boundsVars: CPOSL.idx.boundsByVar.size,
+        desirKeys: CPOSL.idx.desirByVarPathClass.size,
+        weightKeys: CPOSL.idx.weightByVarPath.size
+      });
+    }
+
+    // ---------------------------
+    // Questionnaire indexes
+    // ---------------------------
+    function buildQuestionnaireIndexes_() {
+  const idx = CPOSL.q.idx;
+  idx.qBankById = new Map();
+  idx.qOptionsByQ = new Map();
+  idx.qDerivByWhenQ = new Map();
+  idx.qRoutesByCurrentQ = new Map();
+  idx.qSignalMapByKey = new Map();
+  idx.startQuestions = [];
+
+  const bank = Array.isArray(CPOSL.q.bank) ? CPOSL.q.bank : [];
+  const options = Array.isArray(CPOSL.q.options) ? CPOSL.q.options : [];
+  const derivs = Array.isArray(CPOSL.q.derivationRules) ? CPOSL.q.derivationRules : [];
+  const routes = Array.isArray(CPOSL.q.routingRules) ? CPOSL.q.routingRules : [];
+  const maps = Array.isArray(CPOSL.q.signalToLiteMap) ? CPOSL.q.signalToLiteMap : [];
+
+  // ✅ UPDATED: Try PascalCase first, fallback to snake_case
+  bank.forEach(r => {
+    const id = String(r.QuestionID || r.Question_ID || '').trim();
+    if (!id) return;
+    idx.qBankById.set(id, r);
+  });
+
+  options.forEach(r => {
+    const qid = String(r.QuestionID || r.Question_ID || '').trim();
+    if (!qid) return;
+    if (!idx.qOptionsByQ.has(qid)) idx.qOptionsByQ.set(qid, []);
+    idx.qOptionsByQ.get(qid).push(r);
+  });
+
+  for (const arr of idx.qOptionsByQ.values()) {
+    arr.sort((a, b) => (toNum(a.OptionOrder || a.Option_Order) ?? 9999) - (toNum(b.OptionOrder || b.Option_Order) ?? 9999));
+  }
+
+  derivs.forEach(r => {
+    const qid = String(r.WhenQuestionID || r.When_Question_ID || '').trim();
+    if (!qid) return;
+    if (!idx.qDerivByWhenQ.has(qid)) idx.qDerivByWhenQ.set(qid, []);
+    idx.qDerivByWhenQ.get(qid).push(r);
+  });
+
+  for (const arr of idx.qDerivByWhenQ.values()) {
+    arr.sort((a, b) => (toNum(a.Priority) ?? 9999) - (toNum(b.Priority) ?? 9999));
+  }
+
+  routes.forEach(r => {
+    const qid = String(r.CurrentQuestionID || r.Current_Question_ID || '').trim();
+    if (!qid) return;
+    if (!idx.qRoutesByCurrentQ.has(qid)) idx.qRoutesByCurrentQ.set(qid, []);
+    idx.qRoutesByCurrentQ.get(qid).push(r);
+  });
+
+  for (const arr of idx.qRoutesByCurrentQ.values()) {
+    arr.sort((a, b) => (toNum(a.Priority) ?? 9999) - (toNum(b.Priority) ?? 9999));
+  }
+
+  maps.forEach(r => {
+    if (!toBool(r.IsActive || r.Is_Active)) return;
+    const key = String(r.SignalKey || r.Signal_Key || '').trim();
+    if (!key) return;
+    if (!idx.qSignalMapByKey.has(key)) idx.qSignalMapByKey.set(key, []);
+    idx.qSignalMapByKey.get(key).push(r);
+  });
+
+  const activeBank = bank.filter(r => toBool(r.IsActive || r.Is_Active));
+  const modeBank = activeBank.filter(r => {
+    const mode = String(r.Mode || '').trim();
+    return !mode || mode.toUpperCase() === CPOSL.qState.mode.toUpperCase();
+  });
+
+  const startByGroup = modeBank.filter(r => String(r.GroupCode || r.Group_Code || '').trim().toUpperCase() === 'START');
+  if (startByGroup.length) {
+    idx.startQuestions = startByGroup.map(r => String(r.QuestionID || r.Question_ID || '').trim()).filter(Boolean);
+  } else {
+    const sequences = modeBank.map(r => toNum(r.Sequence)).filter(v => v !== null);
+    const minSeq = sequences.length ? Math.min.apply(null, sequences) : null;
+    if (minSeq !== null) {
+      idx.startQuestions = modeBank.filter(r => toNum(r.Sequence) === minSeq).map(r => String(r.QuestionID || r.Question_ID || '').trim()).filter(Boolean);
+    } else if (modeBank.length) {
+      const sorted = modeBank.slice().sort((a, b) => (toNum(a.Sequence) ?? 9999) - (toNum(b.Sequence) ?? 9999));
+      idx.startQuestions = [String(sorted[0].QuestionID || sorted[0].Question_ID || '').trim()].filter(Boolean);
+    }
+  }
+
+  console.log('[CPOS][Q] indexes built', {
+    bank: idx.qBankById.size,
+    options: idx.qOptionsByQ.size,
+    deriv: idx.qDerivByWhenQ.size,
+    routes: idx.qRoutesByCurrentQ.size,
+    signalMaps: idx.qSignalMapByKey.size,
+    starts: idx.startQuestions.length
+  });
+}
+
+
+
+
+/**
+ * Debug: Show which questions have derivation rules defined
+ */
+function debugDerivationCoverage_() {
+  console.log('═══════════════════════════════════════════════');
+  console.log('[Debug] 📋 Derivation Rules Coverage Check');
+  console.log('═══════════════════════════════════════════════');
+  
+  const derivIndex = CPOSL.q.idx.qDerivByWhenQ;
+  
+  if (!derivIndex || derivIndex.size === 0) {
+    console.error('❌ No derivation rules loaded!');
+    return;
+  }
+  
+  console.log('Questions WITH derivation rules (' + derivIndex.size + '):');
+  for (const [qid, rules] of derivIndex.entries()) {
+    console.log('  ✅ ' + qid + ' → ' + rules.length + ' rule(s)');
+    
+    // Show first rule as example
+    if (rules.length > 0) {
+      const r = rules[0];
+      console.log('      Example: When "' + r.WhenValue + '" → Signal ' + r.ThenSignalKey);
+    }
+  }
+  
+  console.log('\nQuestions WITHOUT derivation rules (sample):');
+  const allQuestions = Array.from(CPOSL.q.idx.qBankById.keys());
+  const questionsWithoutRules = allQuestions.filter(function(qid) {
+    return !derivIndex.has(qid);
+  }).slice(0, 10); // Show first 10
+  
+  questionsWithoutRules.forEach(function(qid) {
+    console.log('  ❌ ' + qid + ' (no rules)');
+  });
+  
+  if (allQuestions.length - derivIndex.size > 10) {
+    console.log('  ... and ' + (allQuestions.length - derivIndex.size - 10) + ' more questions without rules');
+  }
+  
+  console.log('═══════════════════════════════════════════════\n');
+}
+
+    // ---------------------------
+// ✅ NEW: Sequential question finder
+// ---------------------------
+function findNextSequentialQuestion_(currentQid) {
+  const currentQ = CPOSL.q.idx.qBankById.get(currentQid);
+  if (!currentQ) return null;
+
+  const currentSeq = toNum(currentQ.Sequence);
+  if (currentSeq === null) return null;
+
+  const activeQuestions = Array.from(CPOSL.q.idx.qBankById.values()).filter(q => {
+    if (!toBool(q.Is_Active)) return false;
+    const qMode = String(q.Mode || '').trim().toUpperCase();
+    const currentMode = CPOSL.qState.mode.toUpperCase();
+    return !qMode || qMode === currentMode;
+  });
+
+  activeQuestions.sort((a, b) => (toNum(a.Sequence) ?? 9999) - (toNum(b.Sequence) ?? 9999));
+
+  // Find next REQUIRED question with higher sequence
+  for (const q of activeQuestions) {
+    const qSeq = toNum(q.Sequence);
+    const qid = String(q.Question_ID || '').trim();
+    const isRequired = toBool(q.Is_Required);
+    
+    if (qSeq > currentSeq && !CPOSL.qState.answered[qid] && qid !== currentQid) {
+      // Only auto-add if Is_Required=TRUE
+      // Conditional questions (Is_Required=FALSE) must be added by routing rules
+      if (isRequired) {
+        return qid;
+      }
+    }
+  }
+
+  return null;
+}
+
+    // ---------------------------
+    // QUESTIONNAIRE ENGINE
+    // ---------------------------
+function renderQuestionUI_() {
+  const qid = CPOSL.qState.current;
+  if (!qid) {
+    document.getElementById('qQuestionText').textContent = 'No current question.';
+    document.getElementById('qHelpText').textContent = '';
+    document.getElementById('qAnswerBox').innerHTML = '';
+    return;
+  }
+
+  const qRow = CPOSL.q.idx.qBankById.get(qid);
+  if (!qRow) {
+    document.getElementById('qQuestionText').textContent = `Question ${qid} not found.`;
+    document.getElementById('qHelpText').textContent = '';
+    document.getElementById('qAnswerBox').innerHTML = '';
+    return;
+  }
+
+    // 🆕 ADD THESE 3 LINES
+  if (qid.startsWith('PROBE_')) {
+    renderProbeQuestion();
+    return;
+  }
+
+const lang = CPOSL.language || "EN";
+
+
+  // ✅ NEW: Get text based on selected language
+const questionText = lang === "HI" && qRow.Question_Text_HI 
+    ? String(qRow.Question_Text_HI).trim() 
+    : String(qRow.Question_Text_EN || qid).trim();
+
+const helpText = lang === "HI" && qRow.Help_Text_HI 
+    ? String(qRow.Help_Text_HI).trim() 
+    : String(qRow.Help_Text_EN || '').trim();
+
+  
+  const qType = String(qRow.Answer_Type || '').trim().toLowerCase();
+  const opts = CPOSL.q.idx.qOptionsByQ.get(qid) || [];
+
+  document.getElementById('qQuestionText').textContent = questionText;
+  document.getElementById('qHelpText').textContent = helpText;
+
+  const answerBox = document.getElementById('qAnswerBox');
+  answerBox.innerHTML = '';
+
+  const prevAnswer = CPOSL.qState.answered[qid];
+  const prevRaw = prevAnswer ? prevAnswer.Answer_Raw : '';
+
+  let actualType = qType;
+  
+  if (!actualType) {
+    actualType = opts.length ? 'single_select' : 'text';
+  }
+
+  if (actualType === 'single_select' && opts.length === 0) {
+    console.warn(`[Q] ${qid} is single_select but has no options. Falling back to text input.`);
+    actualType = 'text';
+  }
+  
+  if (actualType === 'multi_select' && opts.length === 0) {
+    console.warn(`[Q] ${qid} is multi_select but has no options. Falling back to textarea.`);
+    actualType = 'text_multi';
+  }
+
+ if (actualType === 'single_select') {
+  opts.forEach(opt => {
+    const code = String(opt.Option_Code || '').trim();
+    const label = lang === 'HI' && opt.Option_Label_HI 
+      ? String(opt.Option_Label_HI).trim() 
+      : String(opt.Option_Label || code).trim();
+    const checked = (prevRaw === code) ? 'checked' : '';
+    const radioId = `q_${qid}_${code}`.replace(/[^a-zA-Z0-9_]/g, '_');
+    const div = document.createElement('div');
+    div.style.cssText = 'display:grid;grid-template-columns:30px 1fr;gap:20px;align-items:center;margin-bottom:10px';
+    div.innerHTML = `
+      <input type="radio" name="q_${qid}" value="${escapeHtml(code)}" id="${radioId}" ${checked} style="margin:0;cursor:pointer">
+      <label for="${radioId}" style="margin:0;cursor:pointer;text-align:left;line-height:1.5">${escapeHtml(label)}</label>
+    `;
+
+
+      answerBox.appendChild(div);
+      
+      const radio = div.querySelector('input');
+      radio.addEventListener('change', () => {
+        updateQuestionnaireUIState_();
+      });
+    });
+  } 
+else if (actualType === 'multi_select') {
+  opts.forEach(opt => {
+    const code = String(opt.Option_Code || '').trim();
+    const label = lang === 'HI' && opt.Option_Label_HI 
+      ? String(opt.Option_Label_HI).trim() 
+      : String(opt.Option_Label || code).trim();
+    const prevCodes = prevRaw ? prevRaw.split(',').map(x => x.trim()) : [];
+    const checked = prevCodes.includes(code) ? 'checked' : '';
+    const cbId = `q_${qid}_${code}`.replace(/[^a-zA-Z0-9_]/g, '_');
+    const div = document.createElement('div');
+    div.style.cssText = 'display:grid;grid-template-columns:30px 1fr;gap:20px;align-items:center;margin-bottom:10px';
+    div.innerHTML = `
+      <input type="checkbox" name="q_${qid}" value="${escapeHtml(code)}" id="${cbId}" ${checked} style="margin:0;cursor:pointer">
+      <label for="${cbId}" style="margin:0;cursor:pointer;text-align:left;line-height:1.5">${escapeHtml(label)}</label>
+    `;
+
+
+      answerBox.appendChild(div);
+      
+      const cb = div.querySelector('input');
+      cb.addEventListener('change', () => {
+        updateQuestionnaireUIState_();
+      });
+    });
+  } 
+  else if (actualType === 'number' || actualType === 'rating_1_5') {
+    const inp = document.createElement('input');
+    inp.type = 'number';
+    inp.id = `q_${qid}_num`;
+    // ✅ NEW: Localized placeholder
+    const placeholder = lang === 'HI' 
+      ? (actualType === 'rating_1_5' ? '1-5 दर्ज करें' : 'संख्यात्मक मान दर्ज करें')
+      : (actualType === 'rating_1_5' ? 'Enter 1-5' : 'Enter numeric value');
+    inp.placeholder = placeholder;
+    if (actualType === 'rating_1_5') {
+      inp.min = '1';
+      inp.max = '5';
+      inp.step = '1';
+    }
+    inp.value = prevRaw;
+    inp.style.cssText = 'width:100%;border-radius:12px;border:1px solid var(--stroke2);background:rgba(255,255,255,0.95);color:var(--text);padding:10px;font-size:13px';
+    answerBox.appendChild(inp);
+    
+    inp.addEventListener('input', () => {
+      updateQuestionnaireUIState_();
+    });
+  } 
+  else if (actualType === 'text_multi') {
+    const inp = document.createElement('textarea');
+    inp.id = `q_${qid}_text`;
+    // ✅ NEW: Localized placeholder
+    const placeholder = lang === 'HI' 
+      ? 'अपना उत्तर दर्ज करें (कॉमा से अलग करें)'
+      : 'Enter your answer (multiple items separated by commas)';
+    inp.placeholder = placeholder;
+    inp.value = prevRaw;
+    inp.style.cssText = 'width:100%;border-radius:12px;border:1px solid var(--stroke2);background:rgba(255,255,255,0.95);color:var(--text);padding:10px;font-size:13px;min-height:80px;resize:vertical';
+    answerBox.appendChild(inp);
+    
+    inp.addEventListener('input', () => {
+      updateQuestionnaireUIState_();
+    });
+  } 
+  else {
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.id = `q_${qid}_text`;
+    // ✅ NEW: Localized placeholder
+    const placeholder = lang === 'HI' ? 'अपना उत्तर दर्ज करें' : 'Enter your answer';
+    inp.placeholder = placeholder;
+    inp.value = prevRaw;
+    inp.style.cssText = 'width:100%;border-radius:12px;border:1px solid var(--stroke2);background:rgba(255,255,255,0.95);color:var(--text);padding:10px;font-size:13px';
+    answerBox.appendChild(inp);
+    
+    inp.addEventListener('input', () => {
+      updateQuestionnaireUIState_();
+    });
+  }
+}
+
+
+function readAnswerFromUI_() {
+  const qid = CPOSL.qState.current;
+  if (!qid) return null;
+
+   // 🆕 ADD THIS BLOCK
+  if (qid.startsWith('PROBE_')) {
+    const radio = document.querySelector('input[name="probeAnswer"]:checked');
+    if (radio) return radio.value;
+    
+    const numInput = document.getElementById('probeNumInput');
+    if (numInput && numInput.value.trim()) return numInput.value.trim();
+    
+    const textInput = document.getElementById('probeTextInput');
+    if (textInput && textInput.value.trim()) return textInput.value.trim();
+    
+    return null;
+  }
+
+  const qRow = CPOSL.q.idx.qBankById.get(qid);
+  if (!qRow) return null;
+
+  const qType = String(qRow.Answer_Type || '').trim().toLowerCase();
+  const opts = CPOSL.q.idx.qOptionsByQ.get(qid) || [];
+  
+  let actualType = qType;
+  if (!actualType) {
+    actualType = opts.length ? 'single_select' : 'text';
+  }
+
+  // ✅ Handle fallback cases
+  if (actualType === 'single_select' && opts.length === 0) {
+    actualType = 'text';
+  }
+  if (actualType === 'multi_select' && opts.length === 0) {
+    actualType = 'text_multi';
+  }
+
+  // ✅ SINGLE SELECT (radio)
+  if (actualType === 'single_select') {
+    const radio = document.querySelector(`input[name="q_${qid}"]:checked`);
+    return radio ? radio.value : null;
+  } 
+  // ✅ MULTI SELECT (checkboxes)
+  else if (actualType === 'multi_select') {
+    const boxes = document.querySelectorAll(`input[name="q_${qid}"]:checked`);
+    const codes = Array.from(boxes).map(b => b.value);
+    return codes.length ? codes.join(',') : null;
+  } 
+  // ✅ NUMBER or RATING
+  else if (actualType === 'number' || actualType === 'rating_1_5') {
+    const inp = document.getElementById(`q_${qid}_num`);
+    return inp ? inp.value.trim() : null;
+  } 
+  // ✅ TEXTAREA (multi-line fallback)
+  else if (actualType === 'text_multi') {
+    const inp = document.getElementById(`q_${qid}_text`);
+    return inp ? inp.value.trim() : null;
+  } 
+  // ✅ TEXT INPUT (default)
+  else {
+    const inp = document.getElementById(`q_${qid}_text`);
+    return inp ? inp.value.trim() : null;
+  }
+}
+
+
+
+
+// ---------------------------
+// Intelligent crop/season parser (Enhanced)
+// ---------------------------
+function parseCropAnswer_(rawText) {
+  if (!rawText || typeof rawText !== 'string') return null;
+  
+  const text = rawText.toLowerCase().trim();
+  if (!text) return null;
+
+  const cropMap = {
+    'rice': 'RICE', 'paddy': 'RICE', 'dhan': 'RICE',
+    'wheat': 'WHEAT', 'gehu': 'WHEAT', 'gehun': 'WHEAT',
+    'maize': 'MAIZE', 'corn': 'MAIZE', 'makka': 'MAIZE',
+    'sugarcane': 'SUGARCANE', 'ganna': 'SUGARCANE', 'cane': 'SUGARCANE',
+    'cotton': 'COTTON', 'kapas': 'COTTON',
+    'soybean': 'SOYBEAN', 'soya': 'SOYBEAN',
+    'chickpea': 'CHICKPEA', 'chana': 'CHICKPEA', 'gram': 'CHICKPEA',
+    'pigeon pea': 'PIGEON_PEA', 'tur': 'PIGEON_PEA', 'arhar': 'PIGEON_PEA', 'toor': 'PIGEON_PEA',
+    'groundnut': 'GROUNDNUT', 'peanut': 'GROUNDNUT', 'mungfali': 'GROUNDNUT',
+    'mustard': 'MUSTARD', 'sarso': 'MUSTARD', 'sarson': 'MUSTARD',
+    'potato': 'POTATO', 'aloo': 'POTATO',
+    'tomato': 'TOMATO', 'tamatar': 'TOMATO',
+    'onion': 'ONION', 'pyaz': 'ONION',
+    'vegetables': 'VEGETABLES', 'veggies': 'VEGETABLES', 'sabzi': 'VEGETABLES',
+    'pulses': 'PULSES', 'dal': 'PULSES', 'daal': 'PULSES',
+    'millets': 'MILLETS', 'bajra': 'MILLETS', 'jowar': 'MILLETS', 'ragi': 'MILLETS'
+  };
+
+  const seasonKeywords = {
+    'kharif': 'KHARIF',
+    'rabi': 'RABI',
+    'summer': 'SUMMER',
+    'zaid': 'SUMMER',
+    'monsoon': 'KHARIF',
+    'winter': 'RABI',
+    'year-round': 'ALL_SEASONS',
+    'year round': 'ALL_SEASONS',
+    'yearround': 'ALL_SEASONS',
+    'all seasons': 'ALL_SEASONS',
+    'perennial': 'ALL_SEASONS'
+  };
+
+  const result = {
+    crops: [],
+    cropSeasons: {},
+    signals: {}
+  };
+
+  let normalized = text
+    .replace(/\bfor\b/gi, ' ')
+    .replace(/\bin\b/gi, ' ')
+    .replace(/[-_.]/g, ' ')
+    .replace(/\(/g, ' ')
+    .replace(/\)/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const segments = normalized.split(/[,;\n]/).map(s => s.trim()).filter(Boolean);
+
+  for (let segment of segments) {
+    let segmentSeason = null;
+    for (const [keyword, season] of Object.entries(seasonKeywords)) {
+      const colonPattern = new RegExp(`^${keyword}\\s*:`, 'i');
+      if (colonPattern.test(segment)) {
+        segmentSeason = season;
+        segment = segment.replace(colonPattern, '').trim();
+        break;
+      }
+    }
+
+    const tokens = segment.split(/\s+and\s+|\s{2,}/).map(t => t.trim()).filter(Boolean);
+    
+    for (const token of tokens) {
+      const words = token.split(/\s+/);
+      const detectedCrops = [];
+      const detectedSeasons = [];
+      
+      words.forEach(word => {
+        for (const [pattern, cropCode] of Object.entries(cropMap)) {
+          if (word === pattern || word === pattern + 's') {
+            if (!detectedCrops.includes(cropCode)) {
+              detectedCrops.push(cropCode);
+            }
+          }
+        }
+        
+        for (const [keyword, season] of Object.entries(seasonKeywords)) {
+          if (word === keyword) {
+            if (!detectedSeasons.includes(season)) {
+              detectedSeasons.push(season);
+            }
+          }
+        }
+      });
+
+      if (segmentSeason) {
+        detectedSeasons.push(segmentSeason);
+      }
+
+      if (detectedSeasons.includes('ALL_SEASONS')) {
+        detectedSeasons.length = 0;
+        detectedSeasons.push('KHARIF', 'RABI', 'SUMMER');
+      }
+
+      detectedCrops.forEach(crop => {
+        if (!result.crops.includes(crop)) {
+          result.crops.push(crop);
+        }
+        
+        if (detectedSeasons.length > 0) {
+          if (!result.cropSeasons[crop]) {
+            result.cropSeasons[crop] = [];
+          }
+          detectedSeasons.forEach(season => {
+            if (!result.cropSeasons[crop].includes(season)) {
+              result.cropSeasons[crop].push(season);
+            }
+          });
+        }
+      });
+    }
+  }
+
+  if (result.crops.includes('RICE')) {
+    result.signals['CROP_RICE_DETECTED'] = { value: 'YES', confidence: 0.9 };
+  }
+  if (result.crops.includes('WHEAT')) {
+    result.signals['CROP_WHEAT_DETECTED'] = { value: 'YES', confidence: 0.9 };
+  }
+  if (result.crops.includes('MAIZE')) {
+    result.signals['CROP_MAIZE_DETECTED'] = { value: 'YES', confidence: 0.9 };
+  }
+  if (result.crops.includes('SUGARCANE')) {
+    result.signals['CROP_SUGARCANE_DETECTED'] = { value: 'YES', confidence: 0.9 };
+  }
+  
+  if (result.crops.length >= 4) {
+    result.signals['CROP_DIVERSITY'] = { value: 'VERY_HIGH', confidence: 0.9 };
+  } else if (result.crops.length === 3) {
+    result.signals['CROP_DIVERSITY'] = { value: 'HIGH', confidence: 0.8 };
+  } else if (result.crops.length === 2) {
+    result.signals['CROP_DIVERSITY'] = { value: 'MEDIUM', confidence: 0.8 };
+  } else if (result.crops.length === 1) {
+    result.signals['CROP_DIVERSITY'] = { value: 'LOW', confidence: 0.8 };
+  }
+
+  const allSeasons = new Set();
+  Object.values(result.cropSeasons).forEach(seasons => {
+    seasons.forEach(s => allSeasons.add(s));
+  });
+  if (allSeasons.size === 3) {
+    result.signals['CROPPING_INTENSITY'] = { value: 'HIGH', confidence: 0.8 };
+  } else if (allSeasons.size === 2) {
+    result.signals['CROPPING_INTENSITY'] = { value: 'MEDIUM', confidence: 0.7 };
+  }
+
+  const kharifCrops = Object.keys(result.cropSeasons).filter(c => 
+    result.cropSeasons[c].includes('KHARIF')
+  );
+  if (kharifCrops.length > 0) {
+    result.signals['KHARIF_ACTIVE'] = { value: 'YES', confidence: 0.9 };
+  }
+
+  const rabiCrops = Object.keys(result.cropSeasons).filter(c => 
+    result.cropSeasons[c].includes('RABI')
+  );
+  if (rabiCrops.length > 0) {
+    result.signals['RABI_ACTIVE'] = { value: 'YES', confidence: 0.9 };
+  }
+
+  console.log('[Q] Parsed crop answer:', result);
+  return result;
+}
+
+
+function formatParsedCropAnswer_(parsed) {
+  if (!parsed || !parsed.crops || parsed.crops.length === 0) return null;
+  
+  const entries = [];
+  parsed.crops.forEach(crop => {
+    const seasons = parsed.cropSeasons[crop] || [];
+    if (seasons.length > 0) {
+      entries.push(`${crop}:${seasons.join('+')}`);
+    } else {
+      entries.push(`${crop}:UNKNOWN`);
+    }
+  });
+  return entries.join(',');
+}
+
+
+
+function validateAnswer_(answerRaw) {
+  if (answerRaw === null || answerRaw === undefined) return false;
+  
+  // ✅ Trim whitespace and check if empty
+  const trimmed = String(answerRaw).trim();
+  if (trimmed === '') return false;
+  
+  return true;
+}
+
+
+function applyDerivationsForQuestion_(qid, answerRaw) {
+  const rules = CPOSL.q.idx.qDerivByWhenQ.get(qid) || [];
+  rules.forEach(rule => {
+    if (!toBool(rule.Is_Active)) return;
+
+    const op = String(rule.When_Operator || '').trim().toUpperCase();
+    const whenVal = String(rule.When_Value || '').trim();
+    const signalKey = String(rule.Then_Signal_Key || '').trim();
+    const signalVal = String(rule.Then_Signal_Value || '').trim();
+    const conf = toNum(rule.Then_Signal_Score) ?? 1.0;
+    const priority = toNum(rule.Priority) ?? 50;
+
+    if (!signalKey) return;
+
+    let matches = false;
+    if (op === 'EQUALS' || op === '=') {
+      matches = (String(answerRaw).trim() === whenVal);
+    } else if (op === '!=' || op === 'NOT_EQUALS') {
+      matches = (String(answerRaw).trim() !== whenVal);
+    } else if (op === 'IN' || op === 'CONTAINS') {
+      matches = String(answerRaw).toLowerCase().includes(whenVal.toLowerCase());
+    } else if (op === '>') {
+      matches = toNum(answerRaw) > toNum(whenVal);
+    } else if (op === '>=') {
+      matches = toNum(answerRaw) >= toNum(whenVal);
+    } else if (op === '<') {
+      matches = toNum(answerRaw) < toNum(whenVal);
+    } else if (op === '<=') {
+      matches = toNum(answerRaw) <= toNum(whenVal);
+    }
+
+    if (matches) {
+      const existing = CPOSL.qState.signals[signalKey];
+      if (!existing || conf > existing.confidence || (conf === existing.confidence && priority > existing.priority)) {
+        CPOSL.qState.signals[signalKey] = {
+          value: signalVal,
+          confidence: conf,
+          sourceQ: qid,
+          priority: priority
+        };
+      }
+    }
+  });
+}
+
+/**
+ * Debug: Check if derivation rules are firing
+ */
+function debugDerivationRules_(qid, answerRaw) {
+  const rules = CPOSL.q.idx.qDerivByWhenQ.get(qid) || [];
+  
+  console.log('[Deriv Debug] Question: ' + qid + ', Answer: "' + answerRaw + '"');
+  console.log('[Deriv Debug] Found ' + rules.length + ' derivation rule(s)');
+  
+  if (rules.length === 0) {
+    console.warn('[Deriv Debug] ⚠️ No derivation rules defined for this question');
+    return;
+  }
+  
+  rules.forEach(function(rule, idx) {
+    const op = String(rule.WhenOperator || '').trim().toUpperCase();
+    const whenVal = String(rule.WhenValue || '').trim();
+    const signalKey = String(rule.ThenSignalKey || '').trim();
+    const signalVal = String(rule.ThenSignalValue || '').trim();
+    const isActive = rule.IsActive;
+    
+    console.log('[Deriv Debug] Rule ' + (idx + 1) + ':');
+    console.log('  - IsActive:', isActive);
+    console.log('  - Operator:', op);
+    console.log('  - WhenValue:', whenVal);
+    console.log('  - ThenSignalKey:', signalKey);
+    console.log('  - ThenSignalValue:', signalVal);
+    
+    if (!isActive) {
+      console.warn('  → ❌ SKIPPED (IsActive=false)');
+      return;
+    }
+    
+    let matches = false;
+    const answerStr = String(answerRaw).trim();
+    
+    if (op === 'EQUALS' || op === '=') {
+      matches = answerStr === whenVal;
+    } else if (op === '!=' || op === 'NOTEQUALS') {
+      matches = answerStr !== whenVal;
+    } else if (op === 'IN' || op === 'CONTAINS') {
+      matches = answerStr.toLowerCase().includes(whenVal.toLowerCase());
+    } else if (op === '>') {
+      matches = toNum(answerStr) > toNum(whenVal);
+    } else if (op === '<') {
+      matches = toNum(answerStr) < toNum(whenVal);
+    } else if (op === '>=') {
+      matches = toNum(answerStr) >= toNum(whenVal);
+    } else if (op === '<=') {
+      matches = toNum(answerStr) <= toNum(whenVal);
+    }
+    
+    if (matches) {
+      console.log('  → ✅ MATCHED! Signal ' + signalKey + ' = ' + signalVal);
+    } else {
+      console.log('  → ❌ NO MATCH (Answer "' + answerStr + '" ' + op + ' "' + whenVal + '" = false)');
+    }
+  });
+}
+
+
+
+function applyRoutingForQuestion_(qid, answerRaw) {
+  rebuildSignalsFromAllAnswers_();
+  
+  const rules = CPOSL.q.idx.qRoutesByCurrentQ.get(qid) || [];
+  const sortedRules = rules.filter(r => toBool(r.Is_Active)).sort((a, b) => (toNum(a.Priority) ?? 9999) - (toNum(b.Priority) ?? 9999));
+
+  sortedRules.forEach(rule => {
+    const sigKey = String(rule.Condition_Signal_Key || '').trim();
+    const op = String(rule.Condition_Operator || '').trim().toUpperCase();
+    const condVal = String(rule.Condition_Value || '').trim();
+    const nextQ = String(rule.Next_Question_ID || '').trim();
+    const action = String(rule.Route_Action || 'ASK').trim().toUpperCase();
+
+    let matches = false;
+
+    if (sigKey && sigKey !== 'ANY') {
+      const signal = CPOSL.qState.signals[sigKey];
+      if (!signal) return;
+
+      const sigVal = String(signal.value || '').trim();
+      
+      if (op === 'EQUALS' || op === '=') {
+        matches = (sigVal === condVal);
+      } else if (op === '!=') {
+        matches = (sigVal !== condVal);
+      } else if (op === 'CONTAINS') {
+        matches = sigVal.toLowerCase().includes(condVal.toLowerCase());
+      }
+    } else if (sigKey === 'ANY' || !sigKey) {
+      matches = true;
+    }
+
+    if (matches) {
+      if (action === 'END' || action === 'END_IF_MIN_MET') {
+        if (CPOSL.qState.answeredCount >= CPOSL.qState.minTarget) {
+          CPOSL.qState.stop = true;
+        }
+      } else if (action === 'SKIP_TO') {
+        CPOSL.qState.queue = [];
+        if (nextQ && !CPOSL.qState.answered[nextQ] && nextQ !== qid) {
+          CPOSL.qState.queue.push(nextQ);
+          console.log(`[Q] Route SKIP_TO: ${nextQ}`);
+        }
+      } else if (action === 'ASK') {
+        if (nextQ && !CPOSL.qState.answered[nextQ] && !CPOSL.qState.queue.includes(nextQ) && nextQ !== qid) {
+          CPOSL.qState.queue.unshift(nextQ);
+          console.log(`[Q] Route ASK (drill-down): ${nextQ}`);
+        }
+      } else if (action === 'ESCALATE_EXPERT') {
+        console.log(`[Q] Escalate to expert: ${nextQ}`);
+      }
+    }
+  });
+}
+
+
+
+
+function checkAnswerConsistency_() {
+  var violations = [];
+  
+  CONSISTENCY_RULES.forEach(function(rule) {
+    try {
+      var result = rule.check(CPOSL.qState.signals);
+      if (!result.valid) {
+        violations.push({
+          ruleId: rule.id,
+          ruleName: rule.name,
+          severity: result.severity,
+          message: result.message,
+          conflictingQuestions: result.conflictingQuestions || []
+        });
+      }
+    } catch (err) {
+      console.warn('[Consistency] Rule ' + rule.id + ' failed:', err);
+    }
+  });
+  
+  return violations;
+}
+
+function showConsistencyWarning_(violation) {
+  var warningHtml = 
+    '<div style="background:rgba(230,168,58,0.1);border:1px solid var(--warn);' +
+    'border-radius:12px;padding:12px;margin:10px 0">' +
+    '<div style="display:flex;gap:10px;align-items:flex-start">' +
+    '<span style="font-size:24px">⚠️</span>' +
+    '<div style="flex:1">' +
+    '<div style="font-weight:700;margin-bottom:6px;color:var(--warn)">Quick Check</div>' +
+    '<div style="font-size:13px;line-height:1.5;margin-bottom:10px">' + 
+    escapeHtml(violation.message) + '</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+    '<button class="btn ghost" onclick="reviewConflict_(\'' + violation.ruleId + '\')">Review Previous Answers</button>' +
+    '<button class="btn primary" onclick="continueAnyway_()">Continue Anyway</button>' +
+    '</div>' +
+    '</div>' +
+    '</div>' +
+    '</div>';
+  
+  document.getElementById('qNavStatus').innerHTML = warningHtml;
+  
+  // Store pending state
+  CPOSL.qState.pendingWarning = violation;
+}
+
+function reviewConflict_(ruleId) {
+  console.log('[Review] User reviewing conflict:', ruleId);
+  var violation = CPOSL.qState.pendingWarning;
+  
+  if (violation && violation.conflictingQuestions && violation.conflictingQuestions.length > 0) {
+    // Show conflicting questions in a simple alert (you can enhance this)
+    var questions = violation.conflictingQuestions.join(', ');
+    alert('Conflicting answers from questions: ' + questions + '\n\nPlease review your previous answers.');
+  }
+  
+  // Clear warning and allow editing
+  document.getElementById('qNavStatus').textContent = 'Review your answers above, then click Next to continue.';
+  CPOSL.qState.pendingWarning = null;
+}
+
+function continueAnyway_() {
+  console.log('[Continue] User overriding consistency warning');
+  
+  // Lower confidence of conflicting signals
+  var violation = CPOSL.qState.pendingWarning;
+  if (violation && violation.conflictingQuestions) {
+    violation.conflictingQuestions.forEach(function(qid) {
+      var ans = CPOSL.qState.answered[qid];
+      if (ans && ans.derivedSignals) {
+        Object.keys(ans.derivedSignals).forEach(function(sigKey) {
+          if (CPOSL.qState.signals[sigKey]) {
+            // Reduce confidence by 20%
+            CPOSL.qState.signals[sigKey].confidence *= 0.8;
+            CPOSL.qState.signals[sigKey].hasConflict = true;
+          }
+        });
+      }
+    });
+  }
+  
+  // Clear warning and proceed
+  document.getElementById('qNavStatus').textContent = '';
+  CPOSL.qState.pendingWarning = null;
+  
+  // Continue to next question
+  proceedToNextQuestion_();
+}
+
+function proceedToNextQuestion_() {
+  // Determine next question
+  if (CPOSL.qState.queue.length === 0) {
+    var nextSeq = findNextSequentialQuestion_(CPOSL.qState.current);
+    if (nextSeq) {
+      CPOSL.qState.queue.push(nextSeq);
+    }
+  }
+  
+  if (CPOSL.qState.queue.length > 0) {
+    CPOSL.qState.current = CPOSL.qState.queue.shift();
+    CPOSL.qState.history.push(CPOSL.qState.current);
+    renderQuestionUI_();
+    updateQuestionnaireUIState_();
+  } else {
+    console.log('[Q] No more questions in queue.');
+    updateQuestionnaireUIState_();
+  }
+}
+
+
+function rebuildSignalsFromAllAnswers_() {
+      CPOSL.qState.signals = {};
+      Object.keys(CPOSL.qState.answered).forEach(qid => {
+        const ans = CPOSL.qState.answered[qid];
+        if (ans && ans.Answer_Normalized !== 'SKIPPED') {
+          applyDerivationsForQuestion_(qid, ans.Answer_Raw);
+        }
+      });
+    }
+
+
+/**
+ * Map questionnaire signals → CPOS-Lite variables (FactorIDs from Bounds table)
+ * This enables pathway scoring by translating questionnaire data into model inputs
+ */
+function applyEstimationMappings_() {
+  const maps = CPOSL.q.idx.qSignalMapByKey;
+  
+  if (!maps || maps.size === 0) {
+    console.warn('[Mapping] No signal-to-lite mappings defined. Skipping estimation.');
+    return;
+  }
+  
+  let mappedCount = 0;
+  
+  // Iterate through all active signal mappings
+  for (const [signalKey, mapRules] of maps.entries()) {
+    const signal = CPOSL.qState.signals[signalKey];
+    
+    if (!signal || !signal.value) {
+      continue; // No signal data to map
+    }
+    
+    const signalValue = String(signal.value).trim();
+    const confidence = signal.confidence || 0.5;
+    
+    // Apply each mapping rule for this signal
+    mapRules.forEach(function(rule) {
+      const liteVarName = String(rule.LiteVariableName || '').trim();
+      const mappingMethod = String(rule.MappingMethod || 'DIRECT').trim().toUpperCase();
+      const whenCondition = String(rule.WhenSignalValue || '').trim();
+      const thenLiteClass = String(rule.ThenLiteClass || '').trim();
+      
+      if (!liteVarName) {
+        return; // Skip invalid mapping
+      }
+      
+      // Check if condition matches (if specified)
+      let conditionMet = true;
+      if (whenCondition) {
+        conditionMet = (signalValue.toUpperCase() === whenCondition.toUpperCase());
+      }
+      
+      if (!conditionMet) {
+        return; // Condition not met, skip this rule
+      }
+      
+      // Apply mapping based on method
+      if (mappingMethod === 'DIRECT') {
+        // Direct mapping: Signal value → Lite class label
+        const classLabel = thenLiteClass || signalValue;
+        
+        CPOSL.selections[liteVarName] = {
+          value: classLabel,
+          source: 'questionnaire',
+          confidence: confidence,
+          signalKey: signalKey
+        };
+        
+        mappedCount++;
+        console.log('[Mapping] DIRECT: ' + signalKey + ' → ' + liteVarName + ' = ' + classLabel);
+        
+      } else if (mappingMethod === 'LOOKUP') {
+        // Lookup mapping: Use numeric value to find class in bounds
+        const numericValue = toNum(signalValue);
+        
+        if (numericValue !== null) {
+          const varData = CPOSL.idx.boundsByVar.get(normKey(liteVarName));
+          
+          if (varData && varData.classes) {
+            // Find matching class based on bounds
+            const matchedClass = varData.classes.find(function(cls) {
+              const lower = cls.LowerBound;
+              const upper = cls.UpperBound;
+              const lowerInc = cls.LowerInclusive;
+              const upperInc = cls.UpperInclusive;
+              
+              const aboveLower = lowerInc ? (numericValue >= lower) : (numericValue > lower);
+              const belowUpper = upperInc ? (numericValue <= upper) : (numericValue < upper);
+              
+              return aboveLower && belowUpper;
+            });
+            
+            if (matchedClass) {
+              CPOSL.selections[liteVarName] = {
+                value: matchedClass.ClassLabel,
+                source: 'questionnaire',
+                confidence: confidence,
+                signalKey: signalKey,
+                numericValue: numericValue
+              };
+              
+              mappedCount++;
+              console.log('[Mapping] LOOKUP: ' + signalKey + ' (' + numericValue + ') → ' + 
+                         liteVarName + ' = ' + matchedClass.ClassLabel);
+            } else {
+              console.warn('[Mapping] LOOKUP failed: No class found for ' + liteVarName + 
+                          ' = ' + numericValue);
+            }
+          }
+        } else {
+          console.warn('[Mapping] LOOKUP requires numeric value, got: ' + signalValue);
+        }
+        
+      } else if (mappingMethod === 'ESTIMATE') {
+        // Estimation: Use formula/proxy to derive numeric value, then lookup
+        const estimateFormula = String(rule.EstimateFormula || '').trim();
+        
+        if (estimateFormula) {
+          try {
+            // Simple variable substitution (e.g., "SIGNAL_A * 0.5")
+            let formula = estimateFormula;
+            
+            // Replace signal keys with their values
+            for (const [key, sig] of Object.entries(CPOSL.qState.signals)) {
+              const val = toNum(sig.value) || 0;
+              formula = formula.replace(new RegExp(key, 'g'), val);
+            }
+            
+            // Evaluate simple math expression
+            const estimatedValue = eval(formula); // ⚠️ Use with caution in production
+            
+            if (typeof estimatedValue === 'number' && !isNaN(estimatedValue)) {
+              const varData = CPOSL.idx.boundsByVar.get(normKey(liteVarName));
+              
+              if (varData && varData.classes) {
+                const matchedClass = varData.classes.find(function(cls) {
+                  const lower = cls.LowerBound;
+                  const upper = cls.UpperBound;
+                  const lowerInc = cls.LowerInclusive;
+                  const upperInc = cls.UpperInclusive;
+                  
+                  const aboveLower = lowerInc ? (estimatedValue >= lower) : (estimatedValue > lower);
+                  const belowUpper = upperInc ? (estimatedValue <= upper) : (estimatedValue < upper);
+                  
+                  return aboveLower && belowUpper;
+                });
+                
+                if (matchedClass) {
+                  CPOSL.selections[liteVarName] = {
+                    value: matchedClass.ClassLabel,
+                    source: 'questionnaire_estimated',
+                    confidence: confidence * 0.8, // Lower confidence for estimates
+                    signalKey: signalKey,
+                    numericValue: estimatedValue,
+                    formula: estimateFormula
+                  };
+                  
+                  mappedCount++;
+                  console.log('[Mapping] ESTIMATE: ' + signalKey + ' → ' + liteVarName + 
+                             ' = ' + matchedClass.ClassLabel + ' (estimated: ' + estimatedValue + ')');
+                }
+              }
+            }
+          } catch (err) {
+            console.error('[Mapping] ESTIMATE formula error for ' + liteVarName + ':', err);
+          }
+        }
+        
+      } else {
+        console.warn('[Mapping] Unknown method: ' + mappingMethod);
+      }
+    });
+  }
+  
+  console.log('[Mapping] Complete. Mapped ' + mappedCount + ' signals → CPOS-Lite variables.');
+  
+  // Update UI to show mapped selections
+  renderSelectionChips_();
+}
+
+/**
+ * Helper: Render mapped selections as chips (for Step 1 recap)
+ */
+function renderSelectionChips_() {
+  const container = document.getElementById('selectionRecap');
+  
+  if (!container) return;
+  
+  container.innerHTML = '';
+  
+  const entries = Object.entries(CPOSL.selections);
+  
+  if (entries.length === 0) {
+    container.innerHTML = '<div class="small" style="color:var(--muted)">No selections mapped yet.</div>';
+    return;
+  }
+  
+  entries.forEach(function([varKey, data]) {
+    const varData = CPOSL.idx.boundsByVar.get(normKey(varKey));
+    const displayName = varData ? varData.FactorDisplayName : varKey;
+    const value = data.value || 'N/A';
+    const confidence = data.confidence ? (data.confidence * 100).toFixed(0) + '%' : '';
+    
+    const chip = makeChip(displayName, value + (confidence ? ' (' + confidence + ')' : ''));
+    container.appendChild(chip);
+  });
+}
+
+
+    function applySignalMappingsToLiteFactors_() {
+  const mappings = CPOSL.q.signalToLiteMap.filter(m => toBool(m.Is_Active));
+  const mapped = [];
+
+  mappings.forEach(m => {
+    const sigKey = String(m.Signal_Key || '').trim();
+    const varNameRaw = String(m.Variable_Name || '').trim();
+    const classLabelRaw = String(m.Class_Label || '').trim();
+    const conf = toNum(m.Confidence_0_1) ?? 0.8;
+
+    if (!sigKey || !varNameRaw || !classLabelRaw) return;
+
+    const signal = CPOSL.qState.signals[sigKey];
+    if (!signal) return;
+
+    const varKey = normKey_(varNameRaw);
+    const factor = CPOSL.idx.boundsByVar.get(varKey);
+    if (!factor) {
+      console.warn(`[Q] Signal ${sigKey} maps to unknown variable: ${varNameRaw}`);
+      return;
+    }
+
+    const classKey = normKey_(classLabelRaw);
+    const classRow = factor.classes.find(c => c.Class_Label === classKey);
+    if (!classRow) {
+      console.warn(`[Q] Signal ${sigKey} maps to unknown class: ${classLabelRaw} for var ${varNameRaw}`);
+      return;
+    }
+
+    computeFromClassLabel_(factor, classLabelRaw, conf);
+    mapped.push({
+      signal: sigKey,
+      variable: factor.Variable_Name_Display,
+      classLabel: classRow.Class_Label_Display,
+      confidence: conf
+    });
+  });
+
+  const derivedBox = document.getElementById('qDerivedBox');
+  if (derivedBox) {
+    let html = '';
+    
+    const q_a1 = CPOSL.qState.answered['Q_A1'];
+    if (q_a1 && q_a1.Parsed_Data) {
+      const parsed = q_a1.Parsed_Data;
+      html += '<div style="margin-bottom:12px"><b>Detected Crops:</b></div>';
+      if (parsed.crops.length > 0) {
+        html += '<div class="chips">';
+        parsed.crops.forEach(crop => {
+          const seasons = parsed.cropSeasons[crop] || [];
+          const seasonText = seasons.length > 0 ? seasons.join(', ') : 'Season unknown';
+          html += `<span class="chip"><span class="k">${escapeHtml(crop)}</span> ${escapeHtml(seasonText)}</span>`;
+        });
+        html += '</div>';
+      } else {
+        html += '<div class="small">No crops detected.</div>';
+      }
+    }
+    
+    html += '<div style="margin-top:12px"><b>Signals Derived:</b></div>';
+    const sigKeys = Object.keys(CPOSL.qState.signals);
+    if (sigKeys.length) {
+      html += '<div class="chips">';
+      sigKeys.forEach(k => {
+        const sig = CPOSL.qState.signals[k];
+        html += `<span class="chip"><span class="k">${escapeHtml(k)}</span> ${escapeHtml(sig.value)} (conf=${sig.confidence.toFixed(2)})</span>`;
+      });
+      html += '</div>';
+    } else {
+      html += '<div class="small">No signals derived yet.</div>';
+    }
+
+    html += '<div style="margin-top:12px"><b>Auto-filled Lite Factors:</b></div>';
+    if (mapped.length) {
+      html += '<div class="chips">';
+      mapped.forEach(m => {
+        html += `<span class="chip"><span class="k">${escapeHtml(m.variable)}</span> &rarr ${escapeHtml(m.classLabel)} (conf=${m.confidence.toFixed(2)})</span>`;
+      });
+      html += '</div>';
+    } else {
+      html += '<div class="small">No factors mapped yet.</div>';
+    }
+
+    derivedBox.innerHTML = html;
+  }
+
+  return mapped;
+}
+
+
+function updateQuestionnaireUIState_() {
+  const btnStart = document.getElementById('btnQStart');
+  const btnBack = document.getElementById('btnQBack');
+  const btnSkip = document.getElementById('btnQSkip');
+  const btnNext = document.getElementById('btnQNext');
+  const btnFinish = document.getElementById('btnQFinish');
+  const progress = document.getElementById('qProgress');
+
+  // ✅ NEW: Get current language
+  const lang = CPOSL.language || 'EN';
+  const inProgress = CPOSL.qState.current !== null;
+  const canGoBack = CPOSL.qState.history.length > 0;
+  const answerValid = validateAnswer_(readAnswerFromUI_());
+  const canFinish = CPOSL.qState.answeredCount >= CPOSL.qState.minTarget || CPOSL.qState.stop;
+
+  if (btnStart) {
+    btnStart.disabled = inProgress;
+    // ✅ NEW: Localized button text
+    btnStart.textContent = lang === 'HI' ? 'शुरू करें' : 'Start';
+  }
+  if (btnBack) {
+    btnBack.disabled = !inProgress || !canGoBack;
+    // ✅ NEW: Localized button text
+    btnBack.textContent = lang === 'HI' ? 'पीछे' : 'Back';
+  }
+  if (btnSkip) {
+    btnSkip.disabled = !inProgress;
+    // ✅ NEW: Localized button text
+    btnSkip.textContent = lang === 'HI' ? 'छोड़ें' : 'Skip';
+  }
+  if (btnNext) {
+    btnNext.disabled = !inProgress || !answerValid;
+    // ✅ NEW: Localized button text
+    btnNext.textContent = lang === 'HI' ? 'अगला' : 'Next';
+  }
+  if (btnFinish) {
+    btnFinish.disabled = !inProgress || !canFinish;
+    // ✅ NEW: Localized button text
+    btnFinish.textContent = lang === 'HI' ? 'समाप्त' : 'Finish';
+  }
+
+  if (progress) {
+    const target = CPOSL.qState.minTarget;
+    const answered = CPOSL.qState.answeredCount;
+    const pct = Math.min(100, Math.round((answered / target) * 100));
+    // ✅ NEW: Localized progress text
+    if (lang === 'HI') {
+      progress.textContent = `उत्तर दिए ${answered} / लक्ष्य ${target} (${pct}%)`;
+    } else {
+      progress.textContent = `Answered ${answered} / target ${target} (${pct}%)`;
+    }
+  }
+}
+
+
+
+    function computeFromClassLabel_(factor, classLabel, confidence) {
+      const varName = factor.Variable_Name;
+      const classKey = normKey_(classLabel);
+      const classRow = (factor.classes || []).find(c => c.Class_Label === classKey) || null;
+      const classDisplay = classRow ? classRow.Class_Label_Display : classLabel;
+
+      CPOSL.selections[varName] = {
+        Variable_Name: varName,
+        Variable_Name_Display: factor.Variable_Name_Display || varName,
+        Factor_ID: factor.Factor_ID,
+        Factor_Category: factor.Factor_Category,
+        Factor_Category_Display: factor.Factor_Category_Display,
+        Factor_Display_Name: factor.Factor_Display_Name,
+        Unit: factor.Unit || '',
+        Observed_Value: CPOSL.selections[varName]?.Observed_Value ?? null,
+        Class_Order: classRow ? classRow.Class_Order : null,
+        Class_Label: classKey,
+        Class_Label_Display: classDisplay,
+        Confidence_0_1: confidence
+      };
+
+      CPOSL.computed[varName] = {};
+      for (const p of CPOSL.PATHWAYS) {
+        const dKey = `${varName}||${p}||${classKey}`;
+        const wKey = `${varName}||${p}`;
+
+        const dRow = CPOSL.idx.desirByVarPathClass.get(dKey) || null;
+        const w = CPOSL.idx.weightByVarPath.get(wKey);
+
+        const desir = dRow ? dRow.d : null;
+        const shape = dRow ? dRow.shape : '';
+        const ctx = dRow ? dRow.ctx : '';
+
+        const score = (Number.isFinite(desir) && Number.isFinite(w)) ? (desir * w) : null;
+
+        CPOSL.computed[varName][p] = { desir, w, score, shape, ctx };
+      }
+    }
+
+    // ---------------------------
+    // Questionnaire navigation
+    // ---------------------------
+function qStart() {
+  CPOSL.qState.sessionId = 'Q-' + Date.now();
+  CPOSL.qState.answered = {};
+  CPOSL.qState.signals = {};
+  CPOSL.qState.queue = [...CPOSL.q.idx.startQuestions];
+  CPOSL.qState.history = [];
+  CPOSL.qState.current = null;
+  CPOSL.qState.answeredCount = 0;
+  CPOSL.qState.stop = false;
+  CPOSL.qState.probeCount = 0;           // Probe counter
+  CPOSL.qState.pendingProbe = null;      // Current probe question
+  CPOSL.qState.pendingWarning = null;    // 🆕 Consistency check warning state
+
+  if (!CPOSL.qState.queue.length) {
+    document.getElementById('qQuestionText').textContent = 'No start questions configured.';
+    setStatus(false, 'No start questions');
+    return;
+  }
+
+
+  // 🔍 ADD THIS DEBUG CALL
+  if (typeof debugDerivationCoverage_ === 'function') {
+    debugDerivationCoverage_();
+  }
+
+  CPOSL.qState.current = CPOSL.qState.queue.shift();
+  renderQuestionUI_();
+  updateQuestionnaireUIState_();
+  setStatus(true, 'Questionnaire started');
+}
+
+
+
+function qNext() {
+  const qid = CPOSL.qState.current;
+  if (!qid) return;
+
+  const answerRaw = readAnswerFromUI_();
+  if (!validateAnswer_(answerRaw)) {
+    setStatus(false, 'Please answer the question');
+    return;
+  }
+
+  let parsedData = null;
+  let normalizedAnswer = answerRaw;
+  
+  if (qid === 'Q_A1') {
+    parsedData = parseCropAnswer_(answerRaw);
+    if (parsedData && parsedData.crops.length > 0) {
+      normalizedAnswer = formatParsedCropAnswer_(parsedData);
+      
+      Object.entries(parsedData.signals || {}).forEach(([key, sig]) => {
+        CPOSL.qState.signals[key] = {
+          value: sig.value,
+          confidence: sig.confidence,
+          sourceQ: qid,
+          priority: 10
+        };
+      });
+      
+      console.log('[Q] Parsed crops:', parsedData);
+    }
+  }
+
+  CPOSL.qState.answered[qid] = {
+    Answer_Raw: answerRaw,
+    Answer_Codes: normalizedAnswer,
+    Answer_Normalized: normalizedAnswer,
+    Parsed_Data: parsedData
+  };
+  
+  CPOSL.qState.answeredCount = Object.keys(CPOSL.qState.answered).filter(k => 
+    CPOSL.qState.answered[k].Answer_Normalized !== 'SKIPPED'
+  ).length;
+
+  // 🔍 ════════════ DERIVATION DEBUG ════════════
+  console.log('[Q] Applying derivations for ' + qid + ' with answer: "' + answerRaw + '"');
+  console.log('[Q] Normalized answer: "' + normalizedAnswer + '"');
+  
+  // Call debug function if it exists
+  if (typeof debugDerivationRules_ === 'function') {
+    debugDerivationRules_(qid, normalizedAnswer);
+  }
+  // 🔍 ════════════════════════════════════════════
+
+  applyDerivationsForQuestion_(qid, normalizedAnswer);
+  applyRoutingForQuestion_(qid, normalizedAnswer);
+  
+  // 🔍 ════════════ UPDATE DERIVED SIGNALS UI ════════════
+  if (typeof renderDerivedSignalsBox_ === 'function') {
+    renderDerivedSignalsBox_();
+  }
+  // 🔍 ════════════════════════════════════════════
+
+  // 🆕 ════════════ CONSISTENCY CHECK ════════════
+  const violations = checkAnswerConsistency_();
+  
+  if (violations.length > 0) {
+    const highSeverity = violations.filter(v => v.severity === 'HIGH');
+    const mediumSeverity = violations.filter(v => v.severity === 'MEDIUM');
+    
+    if (highSeverity.length > 0) {
+      // Block and show warning for high severity
+      console.warn('[Consistency] HIGH severity violation detected:', highSeverity[0]);
+      showConsistencyWarning_(highSeverity[0]);
+      return; // Stop here until user responds
+    } else if (mediumSeverity.length > 0) {
+      // Log but allow continue for medium severity
+      console.warn('[Consistency] MEDIUM severity issues:', mediumSeverity);
+      // Optionally show a soft notification (non-blocking)
+      document.getElementById('qNavStatus').innerHTML = 
+        '<span style="color:var(--warn);font-size:12px">⚠️ ' + 
+        mediumSeverity[0].message + '</span>';
+      // Continue to next question after 3 seconds
+      setTimeout(() => {
+        document.getElementById('qNavStatus').textContent = '';
+      }, 3000);
+    }
+  }
+  // 🆕 ════════════════════════════════════════════
+
+  // 🆕 ════════════ PROBE DETECTION ════════════
+  if (qid.startsWith('PROBE_')) {
+    const probeId = qid.replace('PROBE_', '');
+    processProbeAnswer(CPOSL.qState, probeId, answerRaw);
+  } else {
+    const shouldCheckProbe = (CPOSL.qState.answeredCount % 5 === 0) || 
+                            (CPOSL.qState.answeredCount > 15 && !CPOSL.qState.probeCount);
+    
+    if (shouldCheckProbe) {
+      const probeNeeds = detectProbeNeeds(CPOSL.qState);
+      
+      if (probeNeeds.length > 0) {
+        const probe = getProbeQuestion(probeNeeds[0], CPOSL.qState);
+        
+        if (probe) {
+          CPOSL.qState.queue.unshift('PROBE_' + probe.probeId);
+          CPOSL.qState.pendingProbe = probe;
+          console.log('🔍 Probe triggered:', probe.probeId);
+        }
+      }
+    }
+  }
+  // 🆕 ════════════════════════════════════════════
+
+  if (CPOSL.qState.queue.length === 0) {
+    const nextSeqQuestion = findNextSequentialQuestion_(qid);
+    if (nextSeqQuestion) {
+      CPOSL.qState.queue.push(nextSeqQuestion);
+      console.log(`[Q] Auto-added next required: ${nextSeqQuestion}`);
+    }
+  }
+
+  CPOSL.qState.history.push(qid);
+
+  const minTargetMet = CPOSL.qState.answeredCount >= CPOSL.qState.minTarget;
+  const maxCapReached = CPOSL.qState.answeredCount >= CPOSL.qState.maxCap;
+  
+  if (CPOSL.qState.queue.length === 0 || maxCapReached) {
+    CPOSL.qState.current = null;
+    if (minTargetMet || maxCapReached) {
+      document.getElementById('qQuestionText').textContent = `${CPOSL.qState.answeredCount} questions answered. Click Finish to complete.`;
+    } else {
+      document.getElementById('qQuestionText').textContent = `Answered ${CPOSL.qState.answeredCount}/${CPOSL.qState.minTarget}. No more questions. Click Finish.`;
+    }
+    document.getElementById('qAnswerBox').innerHTML = '';
+  } else {
+    CPOSL.qState.current = CPOSL.qState.queue.shift();
+    renderQuestionUI_();
+  }
+
+  updateQuestionnaireUIState_();
+}
+
+
+
+
+
+
+function qBack() {
+  if (CPOSL.qState.history.length === 0) return;
+
+  const prevQ = CPOSL.qState.history.pop();
+  if (CPOSL.qState.current) {
+    CPOSL.qState.queue.unshift(CPOSL.qState.current);
+  }
+  CPOSL.qState.current = prevQ;
+  renderQuestionUI_();
+  updateQuestionnaireUIState_();
+}
+
+
+    function qSkip() {
+  const qid = CPOSL.qState.current;
+  if (!qid) return;
+
+  CPOSL.qState.answered[qid] = {
+    Answer_Raw: '',
+    Answer_Codes: '',
+    Answer_Normalized: 'SKIPPED'
+  };
+
+  CPOSL.qState.history.push(qid);
+
+  if (CPOSL.qState.queue.length === 0) {
+    const nextSeqQuestion = findNextSequentialQuestion_(qid);
+    if (nextSeqQuestion) {
+      CPOSL.qState.queue.push(nextSeqQuestion);
+      console.log(`[Q] Auto-added next required after skip: ${nextSeqQuestion}`);
+    }
+  }
+
+  const minTargetMet = CPOSL.qState.answeredCount >= CPOSL.qState.minTarget;
+  const maxCapReached = CPOSL.qState.answeredCount >= CPOSL.qState.maxCap;
+
+  if (CPOSL.qState.queue.length === 0 || maxCapReached) {
+    CPOSL.qState.current = null;
+    if (minTargetMet || maxCapReached) {
+      document.getElementById('qQuestionText').textContent = `${CPOSL.qState.answeredCount} questions answered. Click Finish.`;
+    } else {
+      document.getElementById('qQuestionText').textContent = `Answered ${CPOSL.qState.answeredCount}/${CPOSL.qState.minTarget}. No more questions. Click Finish.`;
+    }
+    document.getElementById('qAnswerBox').innerHTML = '';
+  } else {
+    CPOSL.qState.current = CPOSL.qState.queue.shift();
+    renderQuestionUI_();
+  }
+
+  updateQuestionnaireUIState_();
+}
+
+/**
+ * Render derived signals in the right panel for explainability
+ */
+function renderDerivedSignalsBox_() {
+  const container = document.getElementById('qDerivedBox');
+  
+  if (!container) {
+    console.warn('[UI] qDerivedBox not found');
+    return;
+  }
+  
+  const signals = CPOSL.qState.signals || {};
+  const signalKeys = Object.keys(signals);
+  
+  if (signalKeys.length === 0) {
+    container.innerHTML = '<div class="small" style="color:var(--muted)">No signals derived yet. Answer more questions.</div>';
+    return;
+  }
+  
+  let html = '<div style="margin-bottom:10px;font-weight:700;font-size:13px">Derived Signals (' + signalKeys.length + ')</div>';
+  
+  signalKeys.forEach(function(key) {
+    const sig = signals[key];
+    const value = String(sig.value || 'N/A');
+    const confidence = sig.confidence ? (sig.confidence * 100).toFixed(0) + '%' : '—';
+    const sourceQ = sig.sourceQ || '—';
+    
+    html += 
+      '<div style="margin-bottom:8px;padding:8px;background:rgba(255,255,255,0.6);border-radius:8px;border:1px solid var(--stroke2)">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
+      '<span style="font-weight:700;font-size:12px;color:var(--text)">' + escapeHtml(key) + '</span>' +
+      '<span style="font-size:11px;color:var(--muted2);font-family:var(--mono)">conf: ' + confidence + '</span>' +
+      '</div>' +
+      '<div style="font-size:13px;color:var(--primary)">' + escapeHtml(value) + '</div>' +
+      '<div style="font-size:11px;color:var(--muted);margin-top:4px">Source: ' + escapeHtml(sourceQ) + '</div>' +
+      '</div>';
+  });
+  
+  container.innerHTML = html;
+}
+
+
+
+/*
+═══════════════════════════════════════════════════════════════════════════════
+   🔧 UPDATED qFinish() FUNCTION - DROP-IN REPLACEMENT
+   Copy this entire function to replace your existing qFinish()
+═══════════════════════════════════════════════════════════════════════════════ */
+
+function qFinish() {
+  console.log('[Q] Finishing questionnaire...');
+  
+  // Safety check: Ensure qState exists
+  if (!CPOSL.qState || !CPOSL.qState.answered) {
+    console.error('[Q] Cannot finish: qState.answered is undefined');
+    setStatus(false, 'Error: Questionnaire state not initialized');
+    return;
+  }
+  
+  // Rebuild all signals from answered questions (in case some were missed)
+  rebuildSignalsFromAllAnswers_();
+
+  // 🆕 ADD THIS LINE HERE
+  debugSignalMappings_();
+  
+  // Map questionnaire signals → CPOS-Lite variables
+  if (typeof applyEstimationMappings_ === 'function') {
+    applyEstimationMappings_();
+  } else {
+    console.warn('[Q] applyEstimationMappings_ not defined, skipping mapping');
+  }
+  
+  // Count answered questions (excluding SKIPPED)
+  const answeredCount = Object.keys(CPOSL.qState.answered || {}).filter(function(qid) {
+    const ans = CPOSL.qState.answered[qid];
+    return ans && ans.Answer_Normalized && ans.Answer_Normalized !== 'SKIPPED';
+  }).length;
+  
+  const signalCount = Object.keys(CPOSL.qState.signals || {}).length;
+  
+  // Update UI
+  document.getElementById('qQuestionText').textContent = 
+    'Questionnaire complete! Answered ' + answeredCount + ' questions, derived ' + 
+    signalCount + ' signals.';
+  
+  document.getElementById('qAnswerBox').innerHTML = 
+    '<div class="mutedBox">' +
+    '<div style="margin-bottom:10px">✅ <b>Questionnaire Completed</b></div>' +
+    '<div style="font-size:13px;line-height:1.6">' +
+    'Your answers have been processed and signals derived. ' +
+    'Click <b>Step 1</b> above to review auto-filled factors, or proceed to <b>Step 2</b> for pathway analysis.' +
+    '</div>' +
+    '</div>';
+  
+  document.getElementById('qHelpText').textContent = '';
+  document.getElementById('qNavStatus').textContent = '';
+  
+  // Update derived signals display
+  renderDerivedSignalsBox_();
+  
+  // Mark questionnaire as complete
+  CPOSL.qState.stop = true;
+  CPOSL.qState.current = null;
+  
+  // Update button states
+  updateQuestionnaireUIState_();
+  
+  setStatus(true, 'Questionnaire complete: ' + answeredCount + ' answers, ' + signalCount + ' signals');
+  
+  console.log('[Q] Questionnaire finished successfully');
+  console.log('[Q] Answered questions:', answeredCount);
+  console.log('[Q] Derived signals:', signalCount);
+  console.log('[Q] Signals:', CPOSL.qState.signals);
+}
+
+
+/**
+ * Debug helper: Check mapping configuration and current state
+ */
+function debugSignalMappings_() {
+  console.log('═══════════════════════════════════════════════');
+  console.log('[Debug] 🔍 Signal-to-Lite Mapping Diagnostic');
+  console.log('═══════════════════════════════════════════════');
+  
+  // Check if mapping table is loaded
+  const mapTable = CPOSL.q.idx.qSignalMapByKey;
+  console.log('1. Mapping Table Status:');
+  console.log('   - Loaded:', mapTable ? '✅ YES' : '❌ NO');
+  console.log('   - Size:', mapTable ? mapTable.size + ' signal keys' : 'N/A');
+  
+  // Check current signals
+  const signals = CPOSL.qState.signals || {};
+  const signalKeys = Object.keys(signals);
+  console.log('\n2. Current Signals Derived:');
+  console.log('   - Count:', signalKeys.length);
+  
+  if (signalKeys.length > 0) {
+    signalKeys.forEach(function(key) {
+      const sig = signals[key];
+      console.log('   - ' + key + ' = ' + sig.value + ' (confidence: ' + (sig.confidence || 0).toFixed(2) + ')');
+    });
+  } else {
+    console.warn('   ⚠️ NO SIGNALS DERIVED! Check derivation rules.');
+  }
+  
+  // Check if signals have mappings
+  console.log('\n3. Mapping Coverage:');
+  if (mapTable && mapTable.size > 0) {
+    console.log('   Available mappings:');
+    for (const [signalKey, rules] of mapTable.entries()) {
+      const hasSignal = signals[signalKey] ? '✅' : '❌';
+      console.log('   ' + hasSignal + ' ' + signalKey + ' → ' + rules.length + ' rule(s)');
+      
+      if (signals[signalKey]) {
+        rules.forEach(function(rule) {
+          console.log('       → Maps to: ' + rule.LiteVariableName + ' (' + rule.MappingMethod + ')');
+        });
+      }
+    }
+  } else {
+    console.error('   ❌ NO MAPPINGS DEFINED!');
+    console.log('   → Check if CPOS_Questionnaire_SignalToLiteMap sheet exists');
+    console.log('   → Check if getCPOSQuestionnaireConfig() loads signalToLiteMap');
+  }
+  
+  // Check answered questions
+  const answered = Object.keys(CPOSL.qState.answered || {});
+  console.log('\n4. Answered Questions:');
+  console.log('   - Count:', answered.length);
+  if (answered.length > 0) {
+    console.log('   - Question IDs:', answered.slice(0, 5).join(', ') + (answered.length > 5 ? '...' : ''));
+  } else {
+    console.warn('   ⚠️ NO QUESTIONS ANSWERED!');
+  }
+  
+  // Check derivation rules
+  const derivRules = CPOSL.q.idx.qDerivByWhenQ;
+  console.log('\n5. Derivation Rules:');
+  console.log('   - Loaded:', derivRules ? '✅ YES' : '❌ NO');
+  console.log('   - Question coverage:', derivRules ? derivRules.size + ' questions' : 'N/A');
+  
+  console.log('\n═══════════════════════════════════════════════');
+  
+  // Summary and recommendations
+  console.log('[Debug] 📋 Summary:');
+  if (!mapTable || mapTable.size === 0) {
+    console.error('   ❌ CRITICAL: No mapping table loaded');
+    console.log('   → Fix: Ensure SignalToLiteMap sheet exists and is loaded by backend');
+  } else if (signalKeys.length === 0) {
+    console.error('   ❌ CRITICAL: No signals derived from answers');
+    console.log('   → Fix: Check derivation rules are defined and firing');
+  } else {
+    const mappableSignals = signalKeys.filter(function(key) {
+      return mapTable.has(key);
+    });
+    console.log('   ℹ️ Mappable signals: ' + mappableSignals.length + '/' + signalKeys.length);
+    
+    if (mappableSignals.length === 0) {
+      console.warn('   ⚠️ No overlap between signals and mapping table');
+      console.log('   → Fix: Ensure SignalKey names match between derivation and mapping tables');
+    }
+  }
+  console.log('═══════════════════════════════════════════════\n');
+}
+
+function updateDerivedBoxWithEstimations_(mapped, estimated) {
+  var derivedBox = document.getElementById('qDerivedBox');
+  if (!derivedBox) return;
+  
+  var html = '<div style="margin-bottom:12px"><b>Auto-Filled Factors</b></div>';
+  
+  // Class mappings (from signals)
+  if (mapped.length > 0) {
+    html += '<div class="small" style="margin-bottom:6px;color:var(--primary);font-weight:600">✓ Class Mappings (' + mapped.length + '):</div>';
+    html += '<div class="chips" style="margin-bottom:12px">';
+    mapped.forEach(function(m) {
+      html += '<span class="chip" style="background:rgba(47,111,181,0.08)">' +
+              '<span class="k">' + escapeHtml(m.variable) + '</span> ' +
+              '→ ' + escapeHtml(m.classLabel) + ' ' +
+              '<span style="font-size:11px;color:var(--muted2)">(conf:' + m.confidence.toFixed(2) + ')</span>' +
+              '</span>';
+    });
+    html += '</div>';
+  }
+  
+  // Numeric estimates (from estimation rules)
+  if (estimated.length > 0) {
+    html += '<div class="small" style="margin-bottom:6px;color:var(--ok);font-weight:600">✓ Numeric Estimates (' + estimated.length + '):</div>';
+    html += '<div class="chips">';
+    estimated.forEach(function(e) {
+      html += '<span class="chip" style="background:rgba(58,143,75,0.08)">' +
+              '<span class="k">' + escapeHtml(e.variable) + '</span> ' +
+              '≈ ' + e.estimatedValue + ' ' +
+              '→ ' + escapeHtml(e.classLabel || 'N/A') + ' ' +
+              '<span style="font-size:11px;color:var(--muted2)">(conf:' + e.confidence.toFixed(2) + ')</span>' +
+              '</span>';
+    });
+    html += '</div>';
+  }
+  
+  // Summary
+  var totalSignals = Object.keys(CPOSL.qState.signals || {}).length;
+  html += '<div class="small" style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--stroke2);color:var(--muted)">' +
+          totalSignals + ' signals derived → ' + 
+          (mapped.length + estimated.length) + ' factors auto-filled' +
+          '</div>';
+  
+  derivedBox.innerHTML = html;
+}
+
+
+
+    // ---------------------------
+    // Classification from bounds
+    // ---------------------------
+    function classifyValue_(factor, observedValue) {
+      if (observedValue === null || !Number.isFinite(observedValue)) return null;
+
+      for (const c of (factor.classes || [])) {
+        const lo = c.Lower_Bound;
+        const hi = c.Upper_Bound;
+
+        const passLo = (lo === null) ? true : (c.Lower_Inclusive ? (observedValue >= lo) : (observedValue > lo));
+        const passHi = (hi === null) ? true : (c.Upper_Inclusive ? (observedValue <= hi) : (observedValue < hi));
+
+        if (passLo && passHi) return { Class_Order: c.Class_Order, Class_Label: c.Class_Label, Class_Label_Display: c.Class_Label_Display };
+      }
+      return null;
+    }
+
+    // ---------------------------
+    // UI render (group by Factor_Category)
+    // ---------------------------
+    function renderFactorForm() {
+      const host = document.getElementById('factorForm');
+      host.innerHTML = '';
+
+      if (!CPOSL.idx.factorsByCat.size) {
+        host.innerHTML = `<div class="mutedBox" style="grid-column:1/-1">No factors loaded.</div>`;
+        updateEvalGateUI_();
+        return;
+      }
+
+      for (const entry of CPOSL.idx.factorsByCat.values()) {
+        const cat = entry.label;
+        const factors = entry.factors;
+        const catField = document.createElement('div');
+        catField.className = 'field';
+        catField.style.background = 'rgba(245, 238, 220, 1)';
+        catField.style.borderColor = 'rgba(214, 198, 160, 1)';
+        catField.style.gridColumn = '1/-1';
+        catField.innerHTML = `<label><span><b>${escapeHtml(cat)}</b></span><span class="cat">Factor_Category</span></label>
+          <div class="small">Enter values for factors in this category. Class_Label will be auto-derived from Bounds.</div>`;
+        host.appendChild(catField);
+
+        for (const f of factors) {
+          const field = document.createElement('div');
+          field.className = 'field';
+
+          const id = 'inp_' + f.Variable_Name.replaceAll(/[^a-zA-Z0-9]+/g,'_');
+          const cur = CPOSL.selections[f.Variable_Name] || {};
+          const curVal = (cur.Observed_Value ?? '');
+
+          field.innerHTML = `
+            <label>
+              <span>${escapeHtml(f.Factor_Display_Name || f.Variable_Name_Display || f.Variable_Name)}</span>
+              <span class="cat">${escapeHtml(f.Unit || '—')}</span>
+            </label>
+            <input id="${id}" type="number" step="any" placeholder="Observed value" value="${escapeHtml(curVal)}">
+            <div class="small" style="margin-top:8px">
+              <b>Class:</b> <span id="${id}_cls">${escapeHtml(cur.Class_Label_Display || '—')}</span>
+            </div>
+          `;
+
+          host.appendChild(field);
+
+          const inp = field.querySelector('#' + id);
+          inp.addEventListener('input', () => {
+            const raw = inp.value;
+            const val = raw === '' ? null : Number(raw);
+            onValueChange_(f, val);
+            const clsEl = document.getElementById(id + '_cls');
+            if (clsEl) clsEl.textContent = CPOSL.selections[f.Variable_Name]?.Class_Label_Display || '—';
+            renderNotesBox();
+            updateEvalGateUI_();
+          });
+        }
+      }
+
+      renderNotesBox();
+      updateEvalGateUI_();
+    }
+
+    function onValueChange_(factor, observedValue) {
+      const varName = factor.Variable_Name;
+      const classified = classifyValue_(factor, observedValue);
+
+      CPOSL.selections[varName] = {
+        Variable_Name: varName,
+        Variable_Name_Display: factor.Variable_Name_Display || varName,
+        Factor_ID: factor.Factor_ID,
+        Factor_Category: factor.Factor_Category,
+        Factor_Category_Display: factor.Factor_Category_Display,
+        Factor_Display_Name: factor.Factor_Display_Name,
+        Unit: factor.Unit || '',
+        Observed_Value: observedValue,
+        Class_Order: classified ? classified.Class_Order : null,
+        Class_Label: classified ? classified.Class_Label : null,
+        Class_Label_Display: classified ? classified.Class_Label_Display : null
+      };
+
+      CPOSL.computed[varName] = {};
+      for (const p of CPOSL.PATHWAYS) {
+        const cls = classified?.Class_Label || '';
+        const dKey = `${varName}||${p}||${cls}`;
+        const wKey = `${varName}||${p}`;
+
+        const dRow = CPOSL.idx.desirByVarPathClass.get(dKey) || null;
+        const w = CPOSL.idx.weightByVarPath.get(wKey);
+
+        const desir = dRow ? dRow.d : null;
+        const shape = dRow ? dRow.shape : '';
+        const ctx = dRow ? dRow.ctx : '';
+
+        const score = (Number.isFinite(desir) && Number.isFinite(w)) ? (desir * w) : null;
+
+        CPOSL.computed[varName][p] = { desir, w, score, shape, ctx };
+      }
+    }
+
+    function countInputs_() {
+      let c = 0;
+      for (const k of Object.keys(CPOSL.selections)) {
+        const sel = CPOSL.selections[k] || {};
+        const v = sel.Observed_Value;
+        if (v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v))) {
+          c++;
+          continue;
+        }
+        if (sel.Class_Label) c++;
+      }
+      return c;
+    }
+
+    function updateEvalGateUI_() {
+      const hint = document.getElementById('evalGateHint');
+      const btn = document.getElementById('btnEvaluate');
+      const n = countInputs_();
+
+      const MIN_REQUIRED = 1;
+      const ok = n >= MIN_REQUIRED;
+
+      if (hint) {
+        hint.textContent = ok
+          ? `Ready to evaluate. Entered ${n} value(s).`
+          : `Enter at least ${MIN_REQUIRED} value to evaluate.`;
+      }
+      if (btn) btn.disabled = !ok;
+    }
+
+    // ---------------------------
+    // Explainability panel
+    // ---------------------------
+    function classifyFlagFromDesirability_(d) {
+      if (d === null || d === undefined || isNaN(Number(d))) return { cls: 'flag-neutral', txt: 'NA' };
+      const x = Number(d);
+      if (x <= 0.33) return { cls: 'flag-bad', txt: 'Adverse' };
+      if (x >= 0.67) return { cls: 'flag-good', txt: 'Supportive' };
+      return { cls: 'flag-neutral', txt: 'Mixed' };
+    }
+
+    function renderNotesBox() {
+      const box = document.getElementById('notesBox');
+      if (!box) return;
+
+      const parts = [];
+      const vars = Object.keys(CPOSL.selections || {});
+      vars.forEach(varName => {
+        const sel = CPOSL.selections[varName] || {};
+        if (!sel || !sel.Class_Label) return;
+
+        const rows = CPOSL.PATHWAYS.map(p => {
+          const c = CPOSL.computed?.[varName]?.[p] || {};
+          const dOk = Number.isFinite(c.desir);
+          const wOk = Number.isFinite(c.w);
+          const sOk = Number.isFinite(c.score);
+
+          const badge = classifyFlagFromDesirability_(dOk ? c.desir : null);
+
+          const ctx = c.ctx ? ` — ${c.ctx}` : '';
+          const shape = c.shape ? ` ${c.shape}` : '';
+
+          return `- ${p}: d=${dOk ? c.desir.toFixed(2) : 'NA'}, w=${wOk ? c.w.toFixed(1) : 'NA'}, score=${sOk ? c.score.toFixed(2) : 'NA'}${shape} [${badge.txt}]${ctx}`;
+        }).join('\n');
+
+        parts.push(
+          `${sel.Factor_Display_Name || sel.Variable_Name_Display || varName} (${sel.Variable_Name_Display || varName})\n` +
+          `Observed_Value: ${sel.Observed_Value ?? '—'} ${sel.Unit || ''}\n` +
+          `Class_Label: ${sel.Class_Label_Display || sel.Class_Label}\n` +
+          `${rows}\n`
+        );
+      });
+
+      box.textContent = parts.length
+        ? parts.join('\n--------------------------------\n')
+        : 'Enter values to view class, desirability, and pathway context here.';
+    }
+
+    // ---------------------------
+    // Evaluation -> pathway screening (local compute)
+    // ---------------------------
+    function computePathwayResults_() {
+      const results = {};
+      const pathways = CPOSL.PATHWAYS;
+
+      const acc = {};
+      pathways.forEach(p => acc[p] = { sumScore:0, sumW:0, n:0, bad:[], good:[], mrvBad:false, mrvGood:true });
+
+      for (const varName of Object.keys(CPOSL.computed || {})) {
+        const sel = CPOSL.selections[varName] || {};
+        const hasInput = sel && sel.Class_Label && (Number.isFinite(Number(sel.Observed_Value)) || sel.Class_Label);
+        if (!hasInput) continue;
+
+        for (const p of pathways) {
+          const c = CPOSL.computed[varName]?.[p] || {};
+          const d = c.desir;
+          const w = c.w;
+          if (!Number.isFinite(d) || !Number.isFinite(w)) continue;
+
+          acc[p].sumScore += (d * w);
+          acc[p].sumW += w;
+          acc[p].n += 1;
+
+          const isMRV = String(sel.Factor_Category_Display || sel.Factor_Category || '').trim().toLowerCase() === 'mrv';
+          if (isMRV) {
+            if (d <= 0.33) acc[p].mrvBad = true;
+            if (d < 0.67) acc[p].mrvGood = false;
+          }
+
+          if (d <= 0.33) acc[p].bad.push(`${sel.Factor_Display_Name || sel.Variable_Name_Display || varName} (${sel.Class_Label_Display || sel.Class_Label})`);
+          if (d >= 0.67) acc[p].good.push(`${sel.Factor_Display_Name || sel.Variable_Name_Display || varName} (${sel.Class_Label_Display || sel.Class_Label})`);
+        }
+      }
+
+      for (const p of pathways) {
+        const a = acc[p] || { sumScore:0,sumW:0,n:0,bad:[],good:[],mrvBad:false,mrvGood:true };
+        const avg = a.sumW > 0 ? (a.sumScore / a.sumW) : 0;
+
+        let eligibility = 'CONDITIONAL';
+        if (avg >= 0.67) eligibility = 'YES';
+        else if (avg <= 0.33) eligibility = 'NO';
+
+        let priority = 'MEDIUM';
+        if (avg >= 0.75 && a.n >= 3) priority = 'HIGH';
+        else if (avg < 0.50) priority = 'LOW';
+
+        let mrv_tier = 'STANDARD';
+        if (a.mrvBad) mrv_tier = 'HIGH';
+        else if (a.n && a.mrvGood && (String(p) !== '')) mrv_tier = 'LIGHT';
+
+        const reasons = [];
+        if (a.good.length) reasons.push(`Supportive factors: ${a.good.slice(0,3).join('; ')}`);
+        if (a.bad.length) reasons.push(`Adverse factors: ${a.bad.slice(0,3).join('; ')}`);
+        if (!reasons.length) reasons.push('No desirability signals found for entered inputs.');
+
+        const flags = a.bad.slice(0, 10);
+
+        results[p] = {
+          eligibility,
+          priority,
+          mrv_tier,
+          reasons,
+          flags,
+          final_text: `Score=${avg.toFixed(3)} (n=${a.n}, weight_sum=${a.sumW.toFixed(1)})`
+        };
+      }
+
+      return results;
+    }
+
+  async function evaluateAndGo() {
+  try {
+    setStatus(false, 'Evaluating...');
+
+    // ✅ Apply questionnaire signal mappings FIRST
+    applyEstimationMappings();
+
+    const selKeys = Object.keys(CPOSL.selections);
+    if (!selKeys.length) {
+      alert('No data entered. Fill at least one input before evaluating.');
+      return;
+    }
+
+    // 🆕 NEW: Pass signals to backend
+    const resp = await google.script.run
+      .withSuccessHandler(function(r) {
+        if (!r || !r.ok) {
+          setStatus(false, 'Backend error: ' + JSON.stringify(r));
+          return;
+        }
+
+        CPOSL.lastResults = r;
+        renderScreening(r.results || {});
+        renderSelectionRecap();
+        setStatus(true, 'Evaluation complete.');
+        goStep(2);
+      })
+      .withFailureHandler(function(err) {
+        setStatus(false, 'Evaluation failed: ' + (err?.message || err));
+        console.error('[Eval Error]', err);
+      })
+      .evaluateCPOS_Lite_v1(CPOSL.selections, { 
+        signals: CPOSL.qState.signals,  // ← ADD THIS LINE
+        debug: true 
+      });
+
+  } catch (err) {
+    setStatus(false, 'Evaluation error: ' + (err?.message || err));
+    console.error('[Eval Error]', err);
+  }
+}
+
+    function renderSelectionRecap() {
+      const box = document.getElementById('selectionRecap');
+      box.innerHTML = '';
+      const sels = CPOSL.selections || {};
+
+      let any = false;
+      Object.keys(sels).forEach(varName => {
+        const s = sels[varName];
+        if (!s || !s.Class_Label) return;
+        const hasVal = s.Observed_Value !== null && s.Observed_Value !== undefined && s.Observed_Value !== '';
+        any = true;
+        const label = s.Factor_Display_Name || s.Variable_Name_Display || varName;
+        const val = hasVal
+          ? `${s.Observed_Value}${s.Unit ? ' ' + s.Unit : ''} &rarr ${s.Class_Label_Display || s.Class_Label}`
+          : `Class only &rarr ${s.Class_Label_Display || s.Class_Label}`;
+        box.appendChild(makeChip(label, val));
+      });
+
+      if (!any) box.innerHTML = '<div class="small">No inputs.</div>';
+    }
+
+    function pillForEligibility(e){
+      if (e === 'YES') return makePill('ok', 'YES');
+      if (e === 'NO') return makePill('bad', 'NO');
+      return makePill('warn', 'CONDITIONAL');
+    }
+    function pillForPriority(p){
+      if (p === 'HIGH') return makePill('ok', 'PRIORITY: HIGH');
+      if (p === 'LOW') return makePill('bad', 'PRIORITY: LOW');
+      return makePill('blue', 'PRIORITY: MEDIUM');
+    }
+    function pillForMRV(m){
+      if (m === 'HIGH') return makePill('warn', 'MRV: HIGH');
+      if (m === 'LIGHT') return makePill('ok', 'MRV: LIGHT');
+      return makePill('blue', 'MRV: STANDARD');
+    }
+
+    function renderScreening(results) {
+      const grid = document.getElementById('screeningGrid');
+      if (!grid) return;
+      grid.innerHTML = '';
+
+      CPOSL.PATHWAYS.forEach(k => {
+        const r = results[k] || {};
+        const card = document.createElement('div');
+        card.className = 'pathCard';
+        if (k === 'RP-SOC') card.classList.add('path-rp');
+        else if (k === 'AWD-CH₄') card.classList.add('path-awd');
+        else if (k === 'BIOCHAR') card.classList.add('path-bio');
+        else if (k === 'ERW') card.classList.add('path-erw');
+
+        const top = document.createElement('div');
+        top.className = 'pathTop';
+        const name = document.createElement('h4');
+        name.className = 'pathName';
+        name.textContent = k;
+        top.appendChild(name);
+
+        const meta = document.createElement('div');
+        meta.className = 'pathMeta';
+        meta.appendChild(pillForEligibility(r.eligibility));
+        meta.appendChild(pillForPriority(r.priority));
+        meta.appendChild(pillForMRV(r.mrv_tier));
+        top.appendChild(meta);
+
+        card.appendChild(top);
+
+        const reasons = r.reasons || [];
+        if (reasons.length) {
+          const ul = document.createElement('ul');
+          ul.className = 'list';
+          reasons.forEach(txt => {
+            const li = document.createElement('li');
+            li.textContent = txt;
+            ul.appendChild(li);
+          });
+          card.appendChild(ul);
+        }
+
+        grid.appendChild(card);
+      });
+    }
+
+    function renderMRVStrip(results) {
+      const box = document.getElementById('mrvStrip');
+      const tiers = Object.values(results || {}).map(r => r?.mrv_tier || 'STANDARD');
+      let level = 'STANDARD';
+      if (tiers.includes('HIGH')) level = 'HIGH';
+      else if (tiers.includes('LIGHT')) level = 'LIGHT';
+
+      let msg = '';
+      if (level === 'HIGH') msg = 'MRV focus: High-tier monitoring likely needed (MRV category indicates adverse conditions for at least one pathway).';
+      else if (level === 'LIGHT') msg = 'MRV focus: Light MRV feasible (MRV category supportive for current inputs).';
+      else msg = 'MRV focus: Standard MRV is generally sufficient for current inputs.';
+
+      box.innerHTML = `<b style="color:rgba(47,111,181,0.95)">MRV Focus Strip</b><div style="margin-top:6px">${escapeHtml(msg)}</div>`;
+    }
+
+    function buildDecisionSummary(results) {
+      const pathways = ["RP-SOC","AWD-CH₄","BIOCHAR","ERW"];
+      const prRank = { "HIGH":3,"MEDIUM":2,"LOW":1 };
+      const mrvRank = { "LIGHT":3,"STANDARD":2,"HIGH":1 };
+
+      const items = pathways.map(k => {
+        const r = results[k] || {};
+        return {
+          k,
+          eligibility: r.eligibility || "CONDITIONAL",
+          priority: r.priority || "MEDIUM",
+          mrv_tier: r.mrv_tier || "STANDARD",
+          reasons: r.reasons || [],
+          flags: r.flags || []
+        };
+      });
+
+      const recommended = items
+        .filter(x => x.eligibility === "YES")
+        .sort((a,b) => prRank[b.priority] - prRank[a.priority] || mrvRank[b.mrv_tier] - mrvRank[a.mrv_tier])
+        .map(x => x.k);
+
+      const conditional = items
+        .filter(x => x.eligibility === "CONDITIONAL")
+        .sort((a,b) => prRank[b.priority] - prRank[a.priority] || mrvRank[b.mrv_tier] - mrvRank[a.mrv_tier])
+        .map(x => x.k);
+
+      const excluded = items.filter(x => x.eligibility === "NO").map(x => x.k);
+
+      const riskFlags = [...new Set(items.flatMap(x => x.flags || []))].slice(0, 12);
+
+      const topReasons = {};
+      items.forEach(x => {
+        if ((x.reasons || []).length) topReasons[x.k] = x.reasons.slice(0, 2);
+      });
+
+      const headParts = [];
+      if (recommended.length) headParts.push(`${recommended.join(" + ")} recommended`);
+      if (conditional.length) headParts.push(`${conditional.join(" + ")} conditional`);
+      if (excluded.length) headParts.push(`${excluded.join(" + ")} excluded`);
+      const headline = headParts.join("; ") || "No decision available.";
+
+      return { recommended, conditional, excluded, headline, topReasons, riskFlags };
+    }
+
+    function renderStackChips(elId, arr, label) {
+      const box = document.getElementById(elId);
+      if (!box) return;
+      box.innerHTML = '';
+      if (!arr || !arr.length) {
+        box.innerHTML = `<div class="small" style="color:var(--muted)">None</div>`;
+        return;
+      }
+      arr.forEach(k => box.appendChild(makeChip(label, k)));
+    }
+
+    function renderDecisionSummary(results) {
+      const sum = buildDecisionSummary(results);
+      const headlineBox = document.getElementById('headlineBox');
+
+      const reasonsBits = [];
+      Object.keys(sum.topReasons || {}).forEach(k => {
+        const rr = sum.topReasons[k] || [];
+        if (!rr.length) return;
+        reasonsBits.push(
+          `<div style="margin-top:10px"><b>${escapeHtml(k)}</b><ul class="list">${rr.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul></div>`
+        );
+      });
+
+      const flagsBits = (sum.riskFlags || []).length
+        ? `<div style="margin-top:10px"><b>Risk flags</b><div class="chips" style="margin-top:8px">${sum.riskFlags.map(f => `<span class="chip"><span class="k">Flag</span> ${escapeHtml(f)}</span>`).join('')}</div></div>`
+        : '';
+
+      headlineBox.innerHTML =
+        `<div style="font-weight:1000; font-size:13px">${escapeHtml(sum.headline)}</div>` +
+        (reasonsBits.length ? reasonsBits.join('') : `<div style="margin-top:10px;color:var(--muted)">No reasons triggered (with current inputs).</div>`) +
+        flagsBits;
+
+      renderStackChips('recStack', sum.recommended, 'Recommended');
+      renderStackChips('condStack', sum.conditional, 'Conditional');
+      renderStackChips('exclStack', sum.excluded, 'Excluded');
+    }
+
+    // ---------------------------
+    // Actions
+    // ---------------------------
+    function clearSelections() {
+      CPOSL.selections = {};
+      CPOSL.computed = {};
+      CPOSL.lastResults = null;
+      renderFactorForm();
+      renderSelectionRecap();
+      document.getElementById('notesBox').textContent =
+        'Enter values to view class, desirability, and pathway context here.';
+      setStatus(true, 'Selections cleared');
+    }
+
+    function openSaveDrawer() {
+      if (!CPOSL.lastResults) setStatus(false, 'Evaluate before saving.');
+      else setStatus(true, 'Ready to save (optional)');
+    }
+
+    function fillDemoMeta(){
+      document.getElementById('metaClientId').value = 'Default';
+      document.getElementById('metaSiteId').value = 'SITE-001';
+      document.getElementById('metaSiteName').value = 'Demo Site';
+      document.getElementById('metaCropSystem').value = 'Rice paddy';
+      document.getElementById('metaLat').value = '26.1234';
+      document.getElementById('metaLon').value = '81.9876';
+      document.getElementById('metaState').value = 'UP';
+      document.getElementById('metaDistrict').value = 'Sonbhadra';
+      document.getElementById('metaNotes').value = 'Demo assessment for CP-OS Lite UI test.';
+    }
+
+    function saveAssessment() {
+      const out = document.getElementById('saveStatus');
+      out.textContent = '';
+
+      if (!CPOSL.lastResults) {
+        out.textContent = 'Nothing to save (evaluate first).';
+        return;
+      }
+
+      const payload = {
+        Client_ID: document.getElementById('metaClientId').value || 'Default',
+        Site_ID: document.getElementById('metaSiteId').value || '',
+        Site_Name: document.getElementById('metaSiteName').value || '',
+        Crop_System: document.getElementById('metaCropSystem').value || '',
+        Latitude: document.getElementById('metaLat').value || '',
+        Longitude: document.getElementById('metaLon').value || '',
+        State: document.getElementById('metaState').value || '',
+        District: document.getElementById('metaDistrict').value || '',
+        selections: CPOSL.selections || {},
+        results: CPOSL.lastResults || {},
+        notes: document.getElementById('metaNotes').value || ''
+      };
+
+      out.textContent = 'Saving…';
+
+      if (typeof google === 'undefined' || !google.script || !google.script.run) {
+        out.textContent = 'Save unavailable (local mode).';
+        return;
+      }
+
+      google.script.run
+        .withSuccessHandler(res => {
+          if (res && res.ok) {
+            out.innerHTML = `<span style="color:rgba(58,143,75,0.95); font-weight:900">Saved:</span> ${escapeHtml(res.Assessment_ID || '')}`;
+          } else {
+            out.textContent = 'Save failed (bad response).';
+          }
+        })
+        .withFailureHandler(err => {
+          out.textContent = 'Save error: ' + (err?.message || err);
+        })
+        .saveCPOSLiteAssessment(payload);
+    }
+
+    // ---------------------------
+    // Init
+    // ---------------------------
+    async function init() {
+      console.log('[CPOS-Lite] init() start');
+      setStatus(true, 'Loading CPOS_Lite tables…');
+
+      try {
+        const res = await getCPOSLiteTables();
+        if (!res || res.ok === false) {
+          setStatus(false, 'Failed to load CPOS_Lite tables (bad response).');
+          return;
+        }
+
+        CPOSL.data.bounds = res.bounds || [];
+        CPOSL.data.desirability = res.desirability || [];
+        CPOSL.data.weights = res.weights || [];
+
+        buildIndexes_();
+
+        const nFactors = CPOSL.idx.boundsByVar.size;
+
+        try {
+          const qRes = await getCPOSQuestionnaireConfig();
+          if (qRes && qRes.ok !== false) {
+            CPOSL.q.bank = qRes.bank || [];
+            CPOSL.q.options = qRes.options || [];
+            CPOSL.q.derivationRules = qRes.derivationRules || [];
+            CPOSL.q.routingRules = qRes.routingRules || [];
+            CPOSL.q.signalToLiteMap = qRes.signalToLiteMap || [];
+            CPOSL.q.liteBounds = qRes.liteBounds || [];
+
+            buildQuestionnaireIndexes_();
+
+            const nQ = CPOSL.q.idx.qBankById.size;
+            setStatus(true, `Ready • Factors=${nFactors} • QBank=${nQ}`);
+          } else {
+            console.warn('[CPOS][Q] Failed to load questionnaire config');
+            setStatus(true, `Ready • Factors=${nFactors} • Questionnaire unavailable`);
+            document.getElementById('qQuestionText').textContent = 'Questionnaire config not available.';
+            document.getElementById('btnQStart').disabled = true;
+          }
+        } catch (qErr) {
+          console.warn('[CPOS][Q] Load error:', qErr);
+          setStatus(true, `Ready • Factors=${nFactors} • Questionnaire unavailable`);
+          document.getElementById('qQuestionText').textContent = 'Questionnaire config load failed.';
+          document.getElementById('btnQStart').disabled = true;
+        }
+
+        renderFactorForm();
+        updateQuestionnaireUIState_();
+      } catch (err) {
+        console.error('[CPOS-Lite] load error:', err);
+        setStatus(false, 'Load error: ' + (err?.message || String(err)));
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+  init();
+  
+  // ✅ NEW: Language selector event listeners
+  const langEN = document.getElementById('langEN');
+  const langHI = document.getElementById('langHI');
+  
+  if (langEN) {
+    langEN.addEventListener('change', function() {
+      if (this.checked) {
+        CPOSL.language = 'EN';
+        if (CPOSL.qState.current) {
+          renderQuestionUI_();
+        }
+        updateQuestionnaireUIState_();
+        setStatus(true, 'Language changed to English');
+      }
+    });
+  }
+  
+  if (langHI) {
+    langHI.addEventListener('change', function() {
+      if (this.checked) {
+        CPOSL.language = 'HI';
+        if (CPOSL.qState.current) {
+          renderQuestionUI_();
+        }
+        updateQuestionnaireUIState_();
+        setStatus(true, 'भाषा हिन्दी में बदल गई');
+      }
+    });
+  }
+});
+
+
+
+/**
+ * Get next question with conversational context
+ * @param {string} sessionId
+ * @param {object} currentContext - { responses: {}, signals: {} }
+ * @returns {object} { question, contextualText, skipReasons }
+ */
+function getNextAdaptiveQuestion(sessionId, currentContext) {
+  currentContext = currentContext || { responses: {}, signals: {} };
+  
+  // Load question bank
+  const bank = cpos_getTableFast_('CPOS_Q_Bank');
+  const routes = cpos_getTableFast_('CPOS_Q_Routing_Rules');
+  
+  // Get answered questions
+  const answered = new Set(Object.keys(currentContext.responses || {}));
+  
+  // Apply inference rules to skip obvious questions
+  const skipped = applyInferenceSkips_(currentContext);
+  
+  // Get priority-sorted unanswered questions
+  const candidates = bank.rows.filter(q => {
+    const qid = q.Question_ID;
+    return !answered.has(qid) && !skipped.has(qid);
+  });
+  
+  // Apply routing rules to filter
+  const routed = applyRoutingFilters_(candidates, currentContext.signals || {}, routes.rows);
+  
+  // Get highest priority
+  const next = getHighestPriority_(routed, currentContext);
+  
+  if (!next) return { done: true };
+  
+  // Render with context
+  const contextualText = renderWithContext_(next, currentContext);
+  
+  return {
+    question: next,
+    originalText: next.Question_Text,
+    contextualText: contextualText,
+    helpText: next.Help_Text,
+    answerType: next.Answer_Type,
+    options: getOptionsForQuestion_(next.Question_ID),
+    skipReasons: Array.from(skipped)
+  };
+}
+
+
+/**
+ * Render question with conversational context
+ */
+function renderWithContext_(question, context) {
+  const qid = question.Question_ID;
+  const baseText = question.Question_Text || '';
+  
+  // Check for context template in new column (add to Q_Bank sheet)
+  const contextTemplate = question.Context_Template || '';
+  if (!contextTemplate) return baseText;
+  
+  // Replace placeholders with actual responses
+  let rendered = contextTemplate;
+  
+  // Example: "You mentioned you grow {Q_A2_LABEL}. How do you manage residue?"
+  const matches = contextTemplate.match(/\{([^}]+)\}/g);
+  if (matches) {
+    matches.forEach(match => {
+      const key = match.slice(1, -1); // Remove { }
+      
+      // Check if it's a reference to another question
+      if (key.endsWith('_LABEL')) {
+        const refQid = key.replace('_LABEL', '');
+        const refAnswer = context.responses[refQid];
+        if (refAnswer) {
+          // Look up the label for this option code
+          const label = lookupOptionLabel_(refQid, refAnswer);
+          rendered = rendered.replace(match, label || refAnswer);
+        }
+      } else if (key.startsWith('SIGNAL_')) {
+        // Reference to a signal value
+        const sigKey = key.replace('SIGNAL_', '');
+        const sigValue = context.signals[sigKey];
+        if (sigValue) {
+          rendered = rendered.replace(match, sigValue);
+        }
+      }
+    });
+  }
+  
+  return rendered || baseText;
+}
+
+
+/**
+ * Helper: Look up option label by question ID and option code
+ */
+function lookupOptionLabel_(questionId, optionCode) {
+  if (!questionId || !optionCode) return '';
+  
+  var opts = CPOSL.q.idx.qOptionsByQ.get(questionId);
+  if (!opts || !Array.isArray(opts)) return String(optionCode);
+  
+  var lang = CPOSL.language || 'EN';
+  var opt = opts.find(function(o) {
+    return String(o.OptionCode || '').trim() === String(optionCode).trim();
+  });
+  
+  if (!opt) return String(optionCode);
+  
+  if (lang === 'HI' && opt.OptionLabel_HI) {
+    return String(opt.OptionLabel_HI).trim();
+  }
+  
+  return String(opt.OptionLabel || optionCode).trim();
+}
+
+/**
+ * Generate summary for confirmation
+ */
+function generateSummary_(context) {
+  if (!context) {
+    console.error('[generateSummary] No context provided');
+    return {
+      summaryPoints: [],
+      confirmationPrompt: 'No data to summarize',
+      canEdit: false,
+      error: true
+    };
+  }
+  
+  var responses = context.responses || {};
+  var signals = context.signals || {};
+  var summary = [];
+  var lang = CPOSL.language || 'EN';
+  
+  try {
+    // Crop system summary
+    if (responses['Q_A1']) {
+      summary.push({
+        topic: lang === 'HI' ? 'Fasal Pranali' : 'Crop System',
+        text: (lang === 'HI' ? 'Aap ugate hain: ' : 'You grow: ') + String(responses['Q_A1']),
+        relatedQuestions: ['Q_A1']
+      });
+    }
+    
+    // Residue management summary
+    if (responses['Q_C1']) {
+      var residueAction = lookupOptionLabel_('Q_C1', responses['Q_C1']);
+      var reason = responses['Q_C2'] ? lookupOptionLabel_('Q_C2', responses['Q_C2']) : '';
+      
+      var prefix = lang === 'HI' ? 'Aap ' : 'You ';
+      var becauseText = lang === 'HI' ? ' mukhya roop se kyonki ' : ' mainly because ';
+      
+      summary.push({
+        topic: lang === 'HI' ? 'Fasal Avashesh Prabandhan' : 'Residue Management',
+        text: prefix + residueAction.toLowerCase() + (reason ? becauseText + reason.toLowerCase() : ''),
+        relatedQuestions: ['Q_C1', 'Q_C2']
+      });
+    }
+    
+    // Tillage summary
+    if (responses['Q_D1']) {
+      var tillageType = lookupOptionLabel_('Q_D1', responses['Q_D1']);
+      var passes = responses['Q_D2'] ? lookupOptionLabel_('Q_D2', responses['Q_D2']) : '';
+      
+      var practiceText = lang === 'HI' ? 'Aap ' : 'You practice ';
+      var withText = lang === 'HI' ? ' ke saath ' : ' with ';
+      
+      summary.push({
+        topic: lang === 'HI' ? 'Jotai Prakriya' : 'Tillage Practice',
+        text: practiceText + tillageType.toLowerCase() + (passes ? withText + passes.toLowerCase() : ''),
+        relatedQuestions: ['Q_D1', 'Q_D2']
+      });
+    }
+    
+    // Organic inputs summary
+    if (responses['Q_E1']) {
+      var organicUse = lookupOptionLabel_('Q_E1', responses['Q_E1']);
+      summary.push({
+        topic: lang === 'HI' ? 'Jaivik Niveshan' : 'Organic Inputs',
+        text: (lang === 'HI' ? 'Aap ' : 'You ') + organicUse.toLowerCase(),
+        relatedQuestions: ['Q_E1']
+      });
+    }
+    
+    // Water management summary (if rice)
+    if (signals['SYS_ARCHETYPE'] === 'RICE_PADDY' && responses['Q_F2']) {
+      var waterStyle = lookupOptionLabel_('Q_F2', responses['Q_F2']);
+      var waterPrefix = lang === 'HI' 
+        ? 'Aapki dhan fasal ke liye, aap paani ka prabandhan karte hain: ' 
+        : 'For your rice crop, you manage water as: ';
+        
+      summary.push({
+        topic: lang === 'HI' ? 'Jal Prabandhan' : 'Water Management',
+        text: waterPrefix + waterStyle,
+        relatedQuestions: ['Q_F2', 'Q_F3']
+      });
+    }
+    
+    // Irrigation frequency summary
+    if (responses['Q_F1']) {
+      var irrigFreq = lookupOptionLabel_('Q_F1', responses['Q_F1']);
+      summary.push({
+        topic: lang === 'HI' ? 'Sinchai Avritti' : 'Irrigation Frequency',
+        text: (lang === 'HI' ? 'Aap sinchai karte hain: ' : 'You irrigate: ') + irrigFreq.toLowerCase(),
+        relatedQuestions: ['Q_F1']
+      });
+    }
+    
+    // Soil texture/type (from signals)
+    if (signals['SOIL_TEXTURE_CATEGORY']) {
+      summary.push({
+        topic: lang === 'HI' ? 'Mitti ka Prakar' : 'Soil Type',
+        text: (lang === 'HI' ? 'Aapki mitti hai: ' : 'Your soil is: ') + signals['SOIL_TEXTURE_CATEGORY'],
+        relatedQuestions: ['Q_B1', 'Q_B2', 'Q_B3']
+      });
+    }
+    
+    // Rainfall zone (from signals)
+    if (signals['RAINFALL_ZONE']) {
+      summary.push({
+        topic: lang === 'HI' ? 'Varsha Kshetra' : 'Rainfall Zone',
+        text: (lang === 'HI' ? 'Varsha kshetra: ' : 'Rainfall zone: ') + signals['RAINFALL_ZONE'],
+        relatedQuestions: ['Q_G1']
+      });
+    }
+    
+  } catch (err) {
+    console.error('[generateSummary] Error building summary:', err);
+    summary.push({
+      topic: 'Error',
+      text: lang === 'HI' ? 'Saransh banane mein asmarth' : 'Unable to generate complete summary',
+      relatedQuestions: []
+    });
+  }
+  
+  var confirmPrompt = lang === 'HI' 
+    ? 'Kya maine aapki prathaaon ko sahi samjha hai?' 
+    : 'Have I understood your practices correctly?';
+  
+  return {
+    summaryPoints: summary,
+    confirmationPrompt: confirmPrompt,
+    canEdit: true,
+    timestamp: new Date().toISOString(),
+    responseCount: Object.keys(responses).length,
+    signalCount: Object.keys(signals).length
+  };
+}
+
+
+
+
+/**
+ * Apply inference rules to skip obvious questions
+ */
+function applyInferenceSkips_(context) {
+  const skipped = new Set();
+  const signals = context.signals || {};
+  const responses = context.responses || {};
+  
+  // Inference Rule 1: If rice detected, skip water source question
+  if (responses['Q_A2'] === 'CROP_RICE') {
+    skipped.add('Q_A7'); // Water source (inferred: must be irrigated)
+    // Auto-set signal
+    signals['WATER_AVAILABILITY'] = 'AVAILABLE';
+  }
+  
+  // Inference Rule 2: If burning residue, skip cover crop questions
+  if (responses['Q_C1'] && responses['Q_C1'].includes('RES_BURN')) {
+    skipped.add('Q_C8');
+    skipped.add('Q_C9');
+    skipped.add('Q_C10');
+    signals['COVER_CROP'] = 'NO';
+  }
+  
+  // Inference Rule 3: If zero-till, skip tillage depth/passes
+  if (responses['Q_D1'] === 'TILL_ZERO') {
+    skipped.add('Q_D2'); // Number of passes
+    skipped.add('Q_D3'); // Implement type
+    skipped.add('Q_D4'); // Depth
+    signals['TILLAGE_PASSES'] = '0';
+  }
+  
+  // Add more inference rules here based on your domain logic
+  
+  return skipped;
+}
+
+
+/**
+ * Apply routing filters based on signals
+ */
+function applyRoutingFilters_(candidates, signals, routingRules) {
+  return candidates.filter(q => {
+    // Check if any routing rule blocks this question
+    const blockingRules = routingRules.filter(r => 
+      r.Current_Question_ID === q.Question_ID &&
+      r.Route_Action === 'SKIP'
+    );
+    
+    for (const rule of blockingRules) {
+      const sigKey = rule.Condition_Signal_Key;
+      const sigValue = signals[sigKey];
+      
+      if (rule.Condition_Operator === 'EQUALS' && sigValue === rule.Condition_Value) {
+        return false; // Skip this question
+      }
+    }
+    
+    return true; // Include question
+  });
+}
+
+
+/**
+ * Get highest priority question with dynamic boosting
+ */
+function getHighestPriority_(candidates, context) {
+  if (!candidates.length) return null;
+  
+  // Dynamic priority calculation
+  const scored = candidates.map(q => {
+    let priority = Number(q.Priority || 50); // Base priority from Q_Bank
+    
+    // Boost priority based on context
+    const signals = context.signals || {};
+    
+    // Example: Boost residue questions if crop has high residue
+    if (q.Group_Code === 'RESIDUE' && signals['RESIDUE_AMOUNT'] === 'HIGH') {
+      priority += 30;
+    }
+    
+    // Example: Boost rice-specific questions if rice detected
+    if (q.Question_ID.startsWith('Q_F') && signals['SYS_ARCHETYPE'] === 'RICE_PADDY') {
+      priority += 40;
+    }
+    
+    // Example: Boost organic amendment questions if present
+    if (q.Group_Code === 'NUTRIENTS' && signals['ORG_AMENDMENT'] === 'PRESENT') {
+      priority += 20;
+    }
+    
+    return { question: q, priority };
+  });
+  
+  // Sort by priority descending
+  scored.sort((a, b) => b.priority - a.priority);
+  
+  return scored[0].question;
+}
+
+
+/**
+ * Get options for a question
+ */
+function getOptionsForQuestion_(questionId) {
+  const opts = cpos_getTableFast_('CPOS_Q_Options');
+  return opts.rows
+    .filter(r => r.Question_ID === questionId && cpos_toBool_(r.Is_Active, true))
+    .sort((a, b) => (a.Option_Order || 99) - (b.Option_Order || 99));
+}
+
+
+/**
+ * Enhanced signal derivation with confidence tracking
+ */
+function deriveSignalsWithConfidence_(responses) {
+  const signals = {};
+  const confidence = {};
+  
+  const derivRules = cpos_getTableFast_('CPOS_Q_Derivation_Rules');
+  
+  derivRules.rows.forEach(rule => {
+    if (!cpos_toBool_(rule.Is_Active, true)) return;
+    
+    const qid = rule.When_Question_ID;
+    const answer = responses[qid];
+    if (!answer) return;
+    
+    // Check condition
+    let matches = false;
+    if (rule.When_Operator === 'EQUALS' && answer === rule.When_Value) {
+      matches = true;
+    } else if (rule.When_Operator === 'CONTAINS' && String(answer).includes(rule.When_Value)) {
+      matches = true;
+    }
+    
+    if (matches) {
+      const sigKey = rule.Then_Signal_Key;
+      const sigValue = rule.Then_Signal_Value;
+      const sigScore = Number(rule.Then_Signal_Score || 0.5);
+      
+      signals[sigKey] = sigValue;
+      
+      // Set confidence based on:
+      // 1. Rule confidence (from Then_Signal_Score)
+      // 2. Answer directness (direct answer = higher confidence)
+      // 3. Consistency with other signals
+      
+      let conf = sigScore;
+      
+      // Boost confidence if answer is from direct measurement
+      if (responses[qid + '_measured'] === true) {
+        conf = Math.min(1.0, conf + 0.2);
+      }
+      
+      confidence[sigKey] = conf;
+    }
+  });
+  
+  return { signals, confidence };
+}
+
+
+/**
+ * Check if probing needed for low-confidence signals
+ */
+function needsProbing_(signals, confidence, threshold) {
+  threshold = threshold || 0.7;
+  
+  const lowConfidence = [];
+  
+  Object.keys(signals).forEach(sigKey => {
+    const conf = confidence[sigKey] || 0;
+    if (conf < threshold) {
+      lowConfidence.push({
+        signal: sigKey,
+        value: signals[sigKey],
+        confidence: conf
+      });
+    }
+  });
+  
+  return lowConfidence;
+}
+
+
+/**
+ * Generate probe question for low-confidence signal
+ */
+function generateProbeQuestion_(signalInfo, context) {
+  const sigKey = signalInfo.signal;
+  
+  // Define probe questions for key signals
+  const probeTemplates = {
+    'RESIDUE_RETENTION': {
+      text: 'You mentioned you {Q_C1_LABEL}. Can you estimate roughly what percentage of your crop residue actually stays in the field?',
+      answerType: 'single_select',
+      options: ['0-25%', '25-50%', '50-75%', '75-100%']
+    },
+    'ORG_AMENDMENT_INTENSITY': {
+      text: 'You said you apply organic amendments. About how many tonnes per hectare would you estimate?',
+      answerType: 'number',
+      unit: 't/ha'
+    },
+    'AWD_READINESS': {
+      text: 'For your water management, about how many times per season do you drain and re-flood the field?',
+      answerType: 'number',
+      unit: 'times'
+    }
+  };
+  
+  const template = probeTemplates[sigKey];
+  if (!template) return null;
+  
+  return {
+    questionId: 'PROBE_' + sigKey,
+    text: renderWithContext_({ Context_Template: template.text }, context),
+    answerType: template.answerType,
+    options: template.options,
+    unit: template.unit,
+    isProbe: true,
+    boostsConfidenceFor: sigKey
+  };
+}
+
+
+
+/**
+ * Check if summary checkpoint should be shown
+ */
+function shouldShowSummary_(context) {
+  const answeredCount = Object.keys(context.responses || {}).length;
+  
+  // Show summary every 5 questions
+  if (answeredCount > 0 && answeredCount % 5 === 0) {
+    return true;
+  }
+  
+  // Show summary after major sections
+  const lastQid = context.lastAnsweredQuestion;
+  if (lastQid && lastQid.startsWith('Q_C')) {
+    // Just finished crop/residue section
+    return true;
+  }
+  
+  return false;
+}
+
+
+/**
+ * Generate summary for confirmation
+ */
+function generateSummary_(context) {
+  if (!context) {
+    console.error('[generateSummary] No context provided');
+    return {
+      summaryPoints: [],
+      confirmationPrompt: 'No data to summarize',
+      canEdit: false
+    };
+  }
+  
+  const responses = context.responses || {};
+  const signals = context.signals || {};
+  const summary = [];
+  
+  try {
+    // Residue management summary
+    if (responses['Q_C1']) {
+      const residueAction = lookupOptionLabel_('Q_C1', responses['Q_C1']);
+      const reason = responses['Q_C2'] ? lookupOptionLabel_('Q_C2', responses['Q_C2']) : '';
+      summary.push({
+        topic: 'Residue Management',
+        text: 'You ' + residueAction.toLowerCase() + (reason ? ' mainly because ' + reason.toLowerCase() : ''),
+        relatedQuestions: ['Q_C1', 'Q_C2']
+      });
+    }
+    
+    // Tillage summary
+    if (responses['Q_D1']) {
+      const tillageType = lookupOptionLabel_('Q_D1', responses['Q_D1']);
+      const passes = responses['Q_D2'] ? lookupOptionLabel_('Q_D2', responses['Q_D2']) : '';
+      
+      summary.push({
+        topic: 'Tillage Practice',
+        text: 'You practice ' + tillageType.toLowerCase() + (passes ? ' with ' + passes.toLowerCase() : ''),
+        relatedQuestions: ['Q_D1', 'Q_D2']
+      });
+    }
+    
+    // Water management summary (if rice)
+    if (signals['SYS_ARCHETYPE'] === 'RICE_PADDY' && responses['Q_F2']) {
+      const waterStyle = lookupOptionLabel_('Q_F2', responses['Q_F2']);
+      summary.push({
+        topic: 'Water Management',
+        text: 'For your rice crop, you manage water as: ' + waterStyle,
+        relatedQuestions: ['Q_F2', 'Q_F3']
+      });
+    }
+    
+  } catch (err) {
+    console.error('[generateSummary] Error building summary:', err);
+    summary.push({
+      topic: 'Summary Error',
+      text: 'Unable to generate complete summary',
+      relatedQuestions: []
+    });
+  }
+  
+  return {
+    summaryPoints: summary,
+    confirmationPrompt: 'Have I understood your practices correctly?',
+    canEdit: true
+  };
+}
+
+
+
+/**
+ * Enhanced session management with adaptive flow
+ */
+function getAdaptiveQuestionnaireState(sessionId) {
+  // Load session
+  const shS = cpos_getSheet_('CPOS_Q_Sessions');
+  const sVals = shS.getDataRange().getValues();
+  const sHdr = sVals[0].map(h => String(h || '').trim());
+  
+  let sessionRow = null;
+  for (let i = 1; i < sVals.length; i++) {
+    if (String(sVals[i][sHdr.indexOf('Session_ID')] || '') === String(sessionId)) {
+      sessionRow = sVals[i];
+      break;
+    }
+  }
+  
+  if (!sessionRow) {
+    throw new Error('Session not found: ' + sessionId);
+  }
+  
+  // Load responses
+  const shR = cpos_getSheet_('CPOS_Q_Responses');
+  const rVals = shR.getDataRange().getValues();
+  const rHdr = rVals[0].map(h => String(h || '').trim());
+  
+  const responses = {};
+  const derivedSignals = {};
+  
+  for (let i = 1; i < rVals.length; i++) {
+    const sessId = rVals[i][rHdr.indexOf('Session_ID')];
+    if (String(sessId || '') !== String(sessionId)) continue;
+    
+    const qid = rVals[i][rHdr.indexOf('Question_ID')];
+    const answer = rVals[i][rHdr.indexOf('Answer_Raw')];
+    const sigJson = rVals[i][rHdr.indexOf('Derived_Signals_JSON')] || '{}';
+    
+    responses[qid] = answer;
+    
+    try {
+      const sigs = JSON.parse(sigJson);
+      Object.assign(derivedSignals, sigs);
+    } catch (e) {}
+  }
+  
+  // Derive signals with confidence
+  const { signals, confidence } = deriveSignalsWithConfidence_(responses);
+  Object.assign(signals, derivedSignals);
+  
+  const context = { responses, signals, confidence };
+  
+  // Check if summary needed
+  if (shouldShowSummary_(context)) {
+    const summary = generateSummary_(context);
+    return {
+      type: 'SUMMARY',
+      summary: summary,
+      sessionId: sessionId
+    };
+  }
+  
+  // Check if probing needed
+  const lowConf = needsProbing_(signals, confidence, 0.7);
+  if (lowConf.length > 0) {
+    const probe = generateProbeQuestion_(lowConf[0], context);
+    if (probe) {
+      return {
+        type: 'PROBE',
+        question: probe,
+        sessionId: sessionId,
+        context: context
+      };
+    }
+  }
+  
+  // Get next adaptive question
+  const next = getNextAdaptiveQuestion(sessionId, context);
+  
+  if (next.done) {
+    // Session complete - evaluate
+    const selections = mapSignalsToLiteFactors_(signals);
+    const evaluation = evaluateCPOS_Lite_v1(selections, { debug: true });
+    
+    return {
+      type: 'COMPLETE',
+      sessionId: sessionId,
+      evaluation: evaluation,
+      totalQuestions: Object.keys(responses).length,
+      skippedQuestions: next.skipReasons || []
+    };
+  }
+  
+  return {
+    type: 'QUESTION',
+    question: next,
+    sessionId: sessionId,
+    progress: {
+      answered: Object.keys(responses).length,
+      skipped: (next.skipReasons || []).length,
+      confidence: Object.keys(confidence).map(k => ({ signal: k, confidence: confidence[k] }))
+    }
+  };
+}
+
+
+/**
+ * Map signals to Lite Factor classes for evaluation
+ */
+function mapSignalsToLiteFactors_(signals) {
+  const map = cpos_getTableFast_('CPOS_Q_Signal_to_LiteFactor_Map');
+  const selections = {};
+  
+  map.rows.forEach(r => {
+    if (!cpos_toBool_(r.Is_Active, true)) return;
+    
+    const sigKey = r.Signal_Key;
+    const sigValue = signals[sigKey];
+    
+    if (!sigValue) return;
+    
+    // Check if signal matches mapping condition
+    let matches = false;
+    if (r.Signal_Operator === 'EQUALS' && sigValue === r.Signal_Value) {
+      matches = true;
+    }
+    
+    if (matches) {
+      const varName = r.Lite_Variable_Name;
+      const classLabel = r.Lite_Class_Label;
+      
+      selections[varName] = classLabel;
+    }
+  });
+  
+  return selections;
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// 1. RENDER PROBE QUESTION - Fixed string concatenation
+// ════════════════════════════════════════════════════════════════════════════
+
+function renderProbeQuestion() {
+  const probe = CPOSL.qState.pendingProbe;
+  if (!probe) {
+    console.error('Probe data not found');
+    return;
+  }
+
+  const lang = CPOSL.language || 'EN';
+  
+  // Set question text with probe styling - NO EMOJI
+  const questionBox = document.getElementById('qQuestionText');
+  const labelText = lang === 'HI' ? 'त्वरित सत्यापन' : 'QUICK VERIFICATION';
+  
+  // Build HTML using string concatenation - NO TEMPLATE LITERALS
+  let html = '<div style="display:flex;align-items:center;gap:12px;padding:12px;';
+  html += 'background:linear-gradient(135deg, #e3f2fd, #bbdefb);';
+  html += 'border:2px solid #2196F3;border-radius:12px;margin-bottom:10px">';
+  html += '<div style="font-size:28px">&#x2753;</div>'; // HTML entity instead of emoji
+  html += '<div style="flex:1">';
+  html += '<div style="background:#2196F3;color:white;padding:4px 10px;';
+  html += 'border-radius:20px;font-size:11px;font-weight:600;';
+  html += 'display:inline-block;margin-bottom:6px">' + escapeHtml(labelText) + '</div>';
+  html += '<div style="font-weight:600;color:#1976D2">' + escapeHtml(probe.questionText) + '</div>';
+  html += '</div></div>';
+  
+  questionBox.innerHTML = html;
+  
+  // Set help text showing reason
+  const helpBox = document.getElementById('qHelpText');
+  const reasonLabel = lang === 'HI' ? 'कारण' : 'Reason';
+  
+  let helpHtml = '<div style="font-size:12px;color:#1976D2;padding:8px;';
+  helpHtml += 'background:white;border-radius:6px;border-left:4px solid #2196F3">';
+  helpHtml += reasonLabel + ': ' + escapeHtml(probe.reason);
+  helpHtml += '</div>';
+  
+  helpBox.innerHTML = helpHtml;
+  
+  // Render answer options
+  const answerBox = document.getElementById('qAnswerBox');
+  answerBox.innerHTML = '';
+  
+  const answerType = probe.answerType;
+  const options = probe.options;
+  
+  if (answerType === 'single_select' && options && options.length > 0) {
+    options.forEach(function(opt, idx) {
+      const radioId = 'probe_' + idx;
+      const div = document.createElement('div');
+      div.style.cssText = 'display:grid;grid-template-columns:30px 1fr;gap:20px;align-items:center;margin-bottom:10px';
+      
+      let optHtml = '<input type="radio" name="probeAnswer" value="' + escapeHtml(opt) + '" ';
+      optHtml += 'id="' + radioId + '" style="margin:0;cursor:pointer">';
+      optHtml += '<label for="' + radioId + '" style="margin:0;cursor:pointer;text-align:left;line-height:1.5">';
+      optHtml += escapeHtml(opt) + '</label>';
+      
+      div.innerHTML = optHtml;
+      answerBox.appendChild(div);
+      
+      const radio = div.querySelector('input');
+      radio.addEventListener('change', updateQuestionnaireUIState);
+    });
+  } else if (answerType === 'number') {
+    const inp = document.createElement('input');
+    inp.type = 'number';
+    inp.id = 'probeNumInput';
+    inp.placeholder = lang === 'HI' ? 'संख्या दर्ज करें' : 'Enter number';
+    inp.style.cssText = 'width:100%;border-radius:12px;border:2px solid #2196F3;background:rgba(255,255,255,0.95);padding:10px;font-size:13px';
+    answerBox.appendChild(inp);
+    inp.addEventListener('input', updateQuestionnaireUIState);
+  } else if (answerType === 'text') {
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.id = 'probeTextInput';
+    inp.placeholder = lang === 'HI' ? 'अपना उत्तर दर्ज करें' : 'Enter your answer';
+    inp.style.cssText = 'width:100%;border-radius:12px;border:2px solid #2196F3;background:rgba(255,255,255,0.95);padding:10px;font-size:13px';
+    answerBox.appendChild(inp);
+    inp.addEventListener('input', updateQuestionnaireUIState);
+  }
+}
+
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// 2. DETECT PROBE NEEDS - No template literals
+// ════════════════════════════════════════════════════════════════════════════
+
+function detectProbeNeeds(context) {
+  const responses = context.answered || {};
+  const signals = context.signals || {};
+  const probeNeeds = [];
+
+  // Initialize probe count if not exists
+  if (!context.probeCount) context.probeCount = 0;
+
+  // Don't probe too much (max 4 probes per session)
+  if (context.probeCount >= 4) return [];
+
+  // CONFLICT DETECTION
+
+  // 1. Residue conflict: Claims both removing and retaining
+  if (responses['QC019'] && responses['QC017']) {
+    const removal = String(responses['QC019'].AnswerRaw || '');
+    const retention = String(responses['QC017'].AnswerRaw || '');
+
+    if ((removal.includes('YES') || removal.includes('ALL')) && 
+        parseInt(retention) > 30) {
+      probeNeeds.push({
+        signal: 'RESIDUE_USE_CONFLICT',
+        reason: 'Contradictory residue use reported',
+        priority: 95,
+        confidence: 0.4
+      });
+    }
+  }
+
+  // 2. Tillage conflict: Claims zero-till but mentions passes
+  if (signals['TILLAGE_TYPE'] && signals['TILLAGE_TYPE'].value === 'ZERO_TILL' && responses['QM001']) {
+    const passes = parseInt(responses['QM001'].AnswerRaw || 0);
+    if (passes > 0) {
+      probeNeeds.push({
+        signal: 'ZERO_TILL_CONFIRMATION',
+        reason: 'Zero-till claimed but passes > 0',
+        priority: 90,
+        confidence: 0.4
+      });
+    }
+  }
+
+  // 3. Irrigation conflict: Claims rainfed but high irrigation
+  if (responses['QC009'] && responses['QM009']) {
+    const irrigType = String(responses['QC009'].AnswerRaw || '').toLowerCase();
+    const irrigCount = parseInt(responses['QM009'].AnswerRaw || 0);
+
+    if (irrigType.includes('rainfed') && irrigCount > 2) {
+      probeNeeds.push({
+        signal: 'IRRIGATION_CLARIFY',
+        reason: 'Rainfed claimed but irrigation events > 2',
+        priority: 85,
+        confidence: 0.35
+      });
+    }
+  }
+
+  // OUTLIER DETECTION
+
+  // 4. High nitrogen rate
+  if (responses['QM019']) {
+    const nRate = parseFloat(responses['QM019'].AnswerRaw || 0);
+    if (nRate > 200) {
+      probeNeeds.push({
+        signal: 'NITROGEN_RATE_VERIFY',
+        reason: 'Unusually high N rate reported',
+        priority: 85,
+        confidence: 0.35
+      });
+    }
+  }
+
+  // 5. Very high organic application
+  if (responses['QM042']) {
+    const fym = parseFloat(responses['QM042'].AnswerRaw || 0);
+    if (fym > 10) {
+      probeNeeds.push({
+        signal: 'ORGANIC_RATE_CLARIFY',
+        reason: 'Very high organic rate - verify units',
+        priority: 80,
+        confidence: 0.3
+      });
+    }
+  }
+
+  // 6. Very low yield
+  if (responses['QM007']) {
+    const yield_val = parseFloat(responses['QM007'].AnswerRaw || 0);
+    if (yield_val > 0 && yield_val < 1) {
+      probeNeeds.push({
+        signal: 'YIELD_UNIT_CHECK',
+        reason: 'Very low yield - verify units (t/ha vs q/ha)',
+        priority: 75,
+        confidence: 0.25
+      });
+    }
+  }
+
+  // Sort by priority (highest first)
+  probeNeeds.sort(function(a, b) {
+    return b.priority - a.priority;
+  });
+
+  return probeNeeds;
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// 3. GET PROBE QUESTION - Inline templates
+// ════════════════════════════════════════════════════════════════════════════
+
+function getProbeQuestion(probeNeed, context) {
+  // Probe templates - you can later load these from CPOS_Probe_Templates sheet
+
+  const templates = {
+    'RESIDUE_USE_CONFLICT': {
+      text: 'You mentioned both removing and retaining residue. Can you estimate what % stays in field?',
+      text_hi: 'आपने अवशेष को हटाने और रखने दोनों का उल्लेख किया। कृपया बताएं कि कितना % खेत में रहता है?',
+      answerType: 'single_select',
+      options: ['0-25%', '25-50%', '50-75%', '75-100%'],
+      confidenceBoost: 0.3
+    },
+    'ZERO_TILL_CONFIRMATION': {
+      text: 'You said zero-till, but mentioned multiple passes. Just to confirm - do you use a direct seeding machine?',
+      text_hi: 'आपने जीरो-टिल कहा, लेकिन कई बार जुताई का उल्लेख किया। पुष्टि के लिए - क्या आप डायरेक्ट सीडिंग मशीन का उपयोग करते हैं?',
+      answerType: 'single_select',
+      options: [
+        'True zero-till with direct seeding',
+        'Very light surface scratching only',
+        'Some shallow cultivation before planting'
+      ],
+      confidenceBoost: 0.4
+    },
+    'IRRIGATION_CLARIFY': {
+      text: 'You said rainfed, but mentioned irrigation events. Are those supplemental irrigations during dry spells?',
+      text_hi: 'आपने वर्षा आधारित कहा, लेकिन सिंचाई का उल्लेख किया। क्या ये सूखे के दौरान पूरक सिंचाई हैं?',
+      answerType: 'single_select',
+      options: [
+        'Only rainwater - no irrigation',
+        'Life-saving irrigation 1-2 times',
+        'Regular supplemental irrigation'
+      ],
+      confidenceBoost: 0.35
+    },
+    'NITROGEN_RATE_VERIFY': {
+      text: 'The nitrogen rate seems quite high. Can you confirm how many bags of urea (50kg) per hectare?',
+      text_hi: 'नाइट्रोजन की दर काफी अधिक लगती है। कृपया प्रति हेक्टेयर यूरिया के कितने बोरे (50kg) की पुष्टि करें?',
+      answerType: 'number',
+      options: null,
+      confidenceBoost: 0.35
+    },
+    'ORGANIC_RATE_CLARIFY': {
+      text: 'For the organic amendments - is that fresh manure weight or composted weight?',
+      text_hi: 'जैविक खाद के लिए - क्या यह ताजा गोबर का वजन है या कम्पोस्ट का?',
+      answerType: 'single_select',
+      options: [
+        'Fresh manure (as applied)',
+        'Composted/well-rotted',
+        'Mix of both'
+      ],
+      confidenceBoost: 0.3
+    },
+    'YIELD_UNIT_CHECK': {
+      text: 'The yield seems low. Just to confirm - are you reporting in tonnes per hectare (t/ha) or quintals per hectare (q/ha)?',
+      text_hi: 'उपज कम लगती है। पुष्टि के लिए - क्या आप टन प्रति हेक्टेयर (t/ha) या क्विंटल प्रति हेक्टेयर (q/ha) में रिपोर्ट कर रहे हैं?',
+      answerType: 'single_select',
+      options: [
+        'Tonnes per hectare (t/ha)',
+        'Quintals per hectare (q/ha)',
+        'Kilograms per hectare (kg/ha)'
+      ],
+      confidenceBoost: 0.4
+    }
+  };
+
+  const template = templates[probeNeed.signal];
+
+  if (!template) return null;
+
+  const lang = CPOSL.language || 'EN';
+  const questionText = (lang === 'HI' && template.text_hi) ? template.text_hi : template.text;
+
+  return {
+    probeId: probeNeed.signal,
+    questionText: questionText,
+    answerType: template.answerType,
+    options: template.options,
+    confidenceBoost: template.confidenceBoost,
+    reason: probeNeed.reason,
+    priority: probeNeed.priority
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// 4. PROCESS PROBE ANSWER - Boost confidence
+// ════════════════════════════════════════════════════════════════════════════
+
+function processProbeAnswer(context, probeId, answer) {
+  // Store probe answer
+  context.answered['PROBE_' + probeId] = {
+    AnswerRaw: answer,
+    AnswerNormalized: answer,
+    IsProbe: true,
+    ProbeReason: reason,        // 🆕 ADD
+    ConfidenceBoost: boost      // 🆕 ADD
+  };
+
+  // Increment probe count
+  context.probeCount = (context.probeCount || 0) + 1;
+
+  // Get confidence boost
+  const probe = context.pendingProbe;
+  const boost = probe ? probe.confidenceBoost : 0.3;
+
+  // Update confidence for related signals
+  const relatedSignal = probeId.split('_')[0]; // e.g., RESIDUE, TILLAGE, NITROGEN
+
+  Object.keys(context.signals || {}).forEach(function(signalKey) {
+    if (signalKey.includes(relatedSignal)) {
+      const signal = context.signals[signalKey];
+      const currentConf = signal.confidence || 0.5;
+      signal.confidence = Math.min(1.0, currentConf + boost);
+      console.log('  ↑ Boosted', signalKey, 'confidence:', currentConf.toFixed(2), '&rarr', signal.confidence.toFixed(2));
+    }
+  });
+
+  console.log('✅ Probe processed:', probeId, 'Boost:', boost);
+
+  // Clear pending probe
+  context.pendingProbe = null;
+}
+
+
+// Estimation rules - convert qualitative answers to quantitative proxies
+const ESTIMATION_RULES = {
+    // Soil texture proxy estimates
+    'TEXTUREPROXY_CLAYEY': {
+        factors: [
+            { varName: 'clayfraction', estimate: 30, confidence: 0.6 }, // 30% clay
+            { varName: 'sandfraction', estimate: 25, confidence: 0.5 }  // 25% sand
+        ]
+    },
+    'TEXTUREPROXY_SANDY': {
+        factors: [
+            { varName: 'sandfraction', estimate: 70, confidence: 0.65 },
+            { varName: 'clayfraction', estimate: 10, confidence: 0.55 }
+        ]
+    },
+    'TEXTUREPROXY_LOAMY': {
+        factors: [
+            { varName: 'sandfraction', estimate: 40, confidence: 0.5 },
+            { varName: 'clayfraction', estimate: 20, confidence: 0.5 }
+        ]
+    },
+    
+    // Tillage intensity to numeric
+    'DISTURBANCE_HIGH': {
+        factors: [
+            { varName: 'tillageintensity', estimate: 5, confidence: 0.7 } // 5 passes
+        ]
+    },
+    'DISTURBANCE_LOW': {
+        factors: [
+            { varName: 'tillageintensity', estimate: 0, confidence: 0.8 } // Zero till
+        ]
+    },
+    
+    // Residue retention to quantity
+    'RESIDUERETENTION_HIGH': {
+        factors: [
+            { varName: 'residuequantity', estimate: 4.5, confidence: 0.7 } // 4.5 t/ha
+        ]
+    },
+    'RESIDUERETENTION_LOW': {
+        factors: [
+            { varName: 'residuequantity', estimate: 1.0, confidence: 0.6 }
+        ]
+    },
+    
+    // Organic amendment
+    'ORGAMENDMENTINTENSITY_HIGH': {
+        factors: [
+            { varName: 'organicamendmentrate', estimate: 6, confidence: 0.7 } // 6 t/ha
+        ]
+    },
+    'ORGAMENDMENT_PRESENT': {
+        factors: [
+            { varName: 'organicamendmentrate', estimate: 2.5, confidence: 0.6 }
+        ]
+    },
+    
+    // Irrigation intensity
+    'IRRCONTROL_HIGH': {
+        factors: [
+            { varName: 'irrigationintensity', estimate: 2, confidence: 0.65 } // Supplemental
+        ]
+    },
+    'IRRCONTROL_LOW': {
+        factors: [
+            { varName: 'irrigationintensity', estimate: 0, confidence: 0.7 } // Rainfed
+        ]
+    },
+    
+    // Drainage proxy
+    'DRAINAGEPROXY_POOR': {
+        factors: [
+            { varName: 'soildrainageindex', estimate: 1, confidence: 0.7 } // Poor class
+        ]
+    },
+    'DRAINAGEPROXY_MODERATE': {
+        factors: [
+            { varName: 'soildrainageindex', estimate: 2, confidence: 0.65 }
+        ]
+    }
+};
+
+// Apply estimation mappings after signal derivation
+function applyEstimationMappings() {
+    const estimated = [];
+    
+    Object.keys(CPOSL.qState.signals).forEach(signalKey => {
+        const sigValue = CPOSL.qState.signals[signalKey].value;
+        const ruleKey = `${signalKey}_${sigValue}`;
+        
+        const rule = ESTIMATION_RULES[ruleKey];
+        if (!rule) return;
+        
+        rule.factors.forEach(est => {
+            const factor = CPOSL.idx.boundsByVar.get(est.varName);
+            if (!factor) return;
+            
+            // Only estimate if not already measured
+            if (!CPOSL.selections[est.varName] || 
+                CPOSL.selections[est.varName].ObservedValue === null) {
+                
+                // Compute from estimated value
+                onValueChange(factor, est.estimate);
+                
+                // Mark as estimated
+                if (CPOSL.selections[est.varName]) {
+                    CPOSL.selections[est.varName].IsEstimated = true;
+                    CPOSL.selections[est.varName].Confidence01 = est.confidence;
+                }
+                
+                estimated.push({
+                    variable: factor.FactorDisplayName,
+                    estimatedValue: est.estimate,
+                    classLabel: CPOSL.selections[est.varName]?.ClassLabelDisplay,
+                    confidence: est.confidence,
+                    fromSignal: signalKey
+                });
+            }
+        });
+    });
+    
+    return estimated;
+}
+
+
+
+  </script>
+
+</body>
+
+</html>
