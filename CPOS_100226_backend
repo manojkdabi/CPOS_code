@@ -1,0 +1,1710 @@
+/***********************
+ * CP-OS Lite Backend (DROP-IN)
+ * ✅ Uses ONLY:
+ *   - CPOS_Lite_Bounds
+ *   - CPOS_Lite_Desirability
+ *   - CPOS_Lite_Weights
+ *
+ * ❌ Does NOT read:
+ *   - CPOS_Classes
+ *   - CPOS_Rules
+ *
+ * Public API preserved:
+ * - doGet()
+ * - getCPOSData()           -> lite payload
+ * - getCPOSData_Lite()      -> lite payload
+ * - evaluateCPOS_v2()       -> delegates to lite evaluator
+ * - evaluateCPOS_Lite_v1()  -> lite evaluator
+ * - saveCPOSAssessment()
+ * - cpos_upsertDraft()
+ ***********************/
+
+function doGet() {
+  return HtmlService.createHtmlOutputFromFile('Index')
+    .setTitle('CP-OS v1.1 DSS')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function cpos_upsertDraft(p) {
+  return cpos_upsertDraft_(p);
+}
+
+/** ---------- Utilities ---------- */
+
+// ✅ Server API for frontend boot
+function getCPOSLiteTables() {
+  const warnings = [];
+  let bounds = { headers: [], rows: [], warnings: [] };
+  let desir = { headers: [], rows: [], warnings: [] };
+  let wts = { headers: [], rows: [], warnings: [] };
+
+  try {
+    bounds = cpos_getTableFast_('CPOS_Lite_Bounds', { allowMissing: true });
+  } catch (err) {
+    warnings.push(`CPOS_Lite_Bounds error: ${err.message || err}`);
+  }
+
+  try {
+    desir = cpos_getTableFast_('CPOS_Lite_Desirability', { allowMissing: true });
+  } catch (err) {
+    warnings.push(`CPOS_Lite_Desirability error: ${err.message || err}`);
+  }
+
+  try {
+    wts = cpos_getTableFast_('CPOS_Lite_Weights', { allowMissing: true });
+  } catch (err) {
+    warnings.push(`CPOS_Lite_Weights error: ${err.message || err}`);
+  }
+
+  if (bounds.warnings && bounds.warnings.length) warnings.push.apply(warnings, bounds.warnings);
+  if (desir.warnings && desir.warnings.length) warnings.push.apply(warnings, desir.warnings);
+  if (wts.warnings && wts.warnings.length) warnings.push.apply(warnings, wts.warnings);
+
+  // optional computed maps (you already have this)
+  const lite = getCPOSData_Lite();
+
+  const meta = {
+    bounds_rows: (bounds.rows || []).length,
+    desirability_rows: (desir.rows || []).length,
+    weights_rows: (wts.rows || []).length,
+    bounds_headers: (bounds.headers || []).length,
+    desirability_headers: (desir.headers || []).length,
+    weights_headers: (wts.headers || []).length
+  };
+
+  return {
+    ok: true,
+    // raw rows for frontend indexing
+    bounds: bounds.rows || [],
+    desirability: desir.rows || [],
+    weights: wts.rows || [],
+
+    meta,
+    warnings,
+
+    // optional computed
+    aspectsMap: lite.aspectsMap || {},
+    desirIdx: lite.desirIdx || {},
+    wIdx: lite.wIdx || {}
+  };
+}
+
+// ✅ Back-compat alias used by frontend
+function saveCPOSLiteAssessment(payload) {
+  return saveCPOSAssessment(payload);
+}
+
+function cpos_getSheet_(name) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(name);
+  if (!sh) throw new Error(`Missing sheet: ${name}`);
+  return sh;
+}
+
+function cpos_tryGetSheet_(name) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  return ss.getSheetByName(name) || null;
+}
+
+function cpos_nowISO_() {
+  return new Date().toISOString();
+}
+
+function cpos_toBool_(v, defaultValue) {
+  if (v === '' || v === null || v === undefined) {
+    return (defaultValue === undefined) ? true : !!defaultValue;
+  }
+  if (typeof v === 'boolean') return v;
+  const s = String(v).trim().toLowerCase();
+  if (s === 'true' || s === 'yes' || s === '1') return true;
+  if (s === 'false' || s === 'no' || s === '0') return false;
+  return (defaultValue === undefined) ? true : !!defaultValue;
+}
+
+function cpos_getTableFast_(sheetName, opts) {
+  opts = opts || {};
+  const warnings = [];
+  const sh = opts.allowMissing ? cpos_tryGetSheet_(sheetName) : cpos_getSheet_(sheetName);
+  if (!sh) {
+    warnings.push(`Missing sheet: ${sheetName}`);
+    return { headers: [], rows: [], warnings };
+  }
+
+  const values = sh.getDataRange().getValues();
+  if (!values || !values.length) {
+    warnings.push(`Empty sheet: ${sheetName}`);
+    return { headers: [], rows: [], warnings };
+  }
+
+  const rawHeaders = values[0] || [];
+  const headers = rawHeaders.map(h => String(h || '').trim());
+  const headerIndex = headers
+    .map((h, idx) => ({ h, idx }))
+    .filter(item => item.h);
+
+  if (!headerIndex.length) {
+    warnings.push(`No headers found in sheet: ${sheetName}`);
+    return { headers: [], rows: [], warnings };
+  }
+  const rows = [];
+
+  for (let i = 1; i < values.length; i++) {
+    const r = values[i] || [];
+    let empty = true;
+    const obj = {};
+    for (let j = 0; j < headerIndex.length; j++) {
+      const h = headerIndex[j].h;
+      const v = r[headerIndex[j].idx];
+      if (v !== '' && v !== null && v !== undefined) empty = false;
+      obj[h] = v;
+    }
+    if (!empty) rows.push(obj);
+  }
+
+  return { headers: headerIndex.map(item => item.h), rows, warnings };
+}
+
+/** ---------- Constants (Lite) ---------- */
+
+// Frontend results keys (keep your established keys)
+const CPOS_PATHWAYS = ['RP-SOC', 'AWD-CH₄', 'BIOCHAR', 'ERW'];
+
+// Normalize pathway labels coming from Lite tables (Pathway column)
+// (Supports your likely variants)
+const CPOS_PATHWAY_ALIAS = {
+  'rp-soc': 'RP-SOC',
+  'rp soc': 'RP-SOC',
+  'regenerative ag': 'RP-SOC',
+  'regenerative agriculture': 'RP-SOC',
+  'awd': 'AWD-CH₄',
+  'awd-ch4': 'AWD-CH₄',
+  'awd-ch₄': 'AWD-CH₄',
+  'awd ch4': 'AWD-CH₄',
+  'biochar': 'BIOCHAR',
+  'erw': 'ERW'
+};
+
+function cpos_normPathway_(p) {
+  const k = String(p || '').trim().toLowerCase();
+  return CPOS_PATHWAY_ALIAS[k] || String(p || '').trim();
+}
+
+function cpos_normKey_(s) {
+  const v = String(s || '').normalize('NFKC');
+  return v
+    .trim()
+    .replace(/\u00A0/g, ' ')
+    .replace(/[–—]/g, '-')
+    .replace(/\s+/g, ' ');
+}
+
+/** =========================================================
+ * PUBLIC: Lite data for dropdowns + scoring indices
+ * Returns:
+ *  {
+ *    ok: true,
+ *    aspectsMap: {
+ *      "<Variable_Name>": { category, factorId, classes:[...], classOrder:{...} }
+ *    },
+ *    desirIdx: { "Var|Class|Pathway": 0..1 },
+ *    wIdx:     { "Var|Pathway": 0..10 }
+ *  }
+ * ========================================================= */
+function getCPOSData_Lite() {
+  const boundsTbl = cpos_getTableFast_('CPOS_Lite_Bounds', { allowMissing: true });
+  const desirTbl = cpos_getTableFast_('CPOS_Lite_Desirability', { allowMissing: true });
+  const wTbl = cpos_getTableFast_('CPOS_Lite_Weights', { allowMissing: true });
+
+  // ---- aspectsMap from Bounds ----
+  const aspectsMap = {};
+  boundsTbl.rows.forEach(r => {
+    const a = cpos_normKey_(r.Variable_Name);
+    const c = cpos_normKey_(r.Class_Label);
+    if (!a || !c) return;
+
+    if (!aspectsMap[a]) {
+      aspectsMap[a] = {
+        category: cpos_normKey_(r.Factor_Category),
+        factorId: cpos_normKey_(r.Factor_ID),
+        classes: [],
+        classOrder: {}
+      };
+    }
+
+    if (!aspectsMap[a].classes.includes(c)) aspectsMap[a].classes.push(c);
+
+    const ord = Number(r.Class_Order);
+    if (!isNaN(ord)) aspectsMap[a].classOrder[c] = ord;
+  });
+
+  // Sort classes by Class_Order if present, else alpha
+  Object.keys(aspectsMap).forEach(a => {
+    const orderMap = aspectsMap[a].classOrder || {};
+    aspectsMap[a].classes.sort((x, y) => {
+      const ox = orderMap[x], oy = orderMap[y];
+      if (ox !== undefined && oy !== undefined) return ox - oy;
+      if (ox !== undefined) return -1;
+      if (oy !== undefined) return 1;
+      return String(x).localeCompare(String(y));
+    });
+  });
+
+  // ---- desirability index ----
+  // key: Variable_Name|Class_Label|Pathway -> desirability(0..1)
+  const desirIdx = {};
+  desirTbl.rows.forEach(r => {
+    const a = cpos_normKey_(r.Variable_Name);
+    const c = cpos_normKey_(r.Class_Label);
+    const p = cpos_normPathway_(r.Pathway);
+
+    const d = Number(r.Desirability_0_1);
+    if (!a || !c || !p || isNaN(d)) return;
+
+    desirIdx[`${a}|${c}|${p}`] = Math.max(0, Math.min(1, d));
+  });
+
+  // ---- weights index ----
+  // key: Variable_Name|Pathway -> weight(0..10)
+  const wIdx = {};
+  wTbl.rows.forEach(r => {
+    const a = cpos_normKey_(r.Variable_Name);
+    const p = cpos_normPathway_(r.Pathway);
+
+    const w = Number(r.Sensitivity_Weight_0_10);
+    if (!a || !p || isNaN(w)) return;
+
+    wIdx[`${a}|${p}`] = Math.max(0, Math.min(10, w));
+  });
+
+  return { ok: true, aspectsMap, desirIdx, wIdx };
+}
+
+/**
+ * Back-compat wrapper:
+ * Some frontends still call getCPOSData() and expect {ok, aspectsMap, rules?}
+ * We return lite payload + rules:[]
+ */
+function getCPOSData(opts) {
+  const lite = getCPOSData_Lite();
+  return {
+    ok: true,
+    aspectsMap: lite.aspectsMap || {},
+    desirIdx: lite.desirIdx || {},
+    wIdx: lite.wIdx || {},
+    rules: [] // legacy placeholder
+  };
+}
+
+/**
+ * PUBLIC: Lite evaluation WITH PATHWAY ELIGIBILITY CHECKS
+ * 🆕 NOW CHECKS: MAIN_CROP, WATER_MANAGEMENT, BIOCHAR_APPLICATION, ERW_ROCK_TYPE signals
+ * 
+ * selections: { "<Variable_Name>": "<Class_Label>" | {Observed_Value, Class_Label}, ... }
+ * opts.signals: { "<Signal_Key>": { value, confidence, sourceQ } }  ← 🆕 NEW PARAMETER
+ * 
+ * Returns:
+ * { ok:true, selections, results, meta }
+ */
+function evaluateCPOS_Lite_v1(selections, opts) {
+  if (!selections || typeof selections !== 'object') {
+    throw new Error('evaluateCPOS_Lite_v1: selections missing');
+  }
+
+  opts = opts || {};
+  const debug = opts.debug === true;
+
+  // 🆕 NEW: Accept signals from questionnaire (passed from frontend)
+  const signals = opts.signals || {};
+
+  const data = getCPOSData_Lite();
+  const desirIdx = data.desirIdx || {};
+  const wIdx = data.wIdx || {};
+
+  const results = {};
+  CPOS_PATHWAYS.forEach(p => {
+    results[p] = {
+      eligibility: 'YES',
+      priority: 'MEDIUM',
+      mrv_tier: 'STANDARD',
+      reasons: [],
+      flags: [],
+      final_text: '',
+      mrv_variables: []
+    };
+  });
+
+  const meta = { computed: 0, used: 0 };
+
+  // Evaluate each pathway independently
+  CPOS_PATHWAYS.forEach(pathway => {
+    meta.computed++;
+
+    let num = 0;
+    let den = 0;
+    const contributions = [];
+
+    Object.keys(selections).forEach(varNameRaw => {
+      const varName = cpos_normKey_(varNameRaw);
+      const rawSelection = selections[varNameRaw];
+      let clsValue = '';
+      if (rawSelection && typeof rawSelection === 'object') {
+        clsValue = rawSelection.Class_Label || rawSelection.classLabel || rawSelection.class_label || '';
+      } else {
+        clsValue = rawSelection;
+      }
+
+      const cls = cpos_normKey_(clsValue);
+      if (!varName || !cls) return;
+
+      const w = Number(wIdx[`${varName}|${pathway}`] || 0);
+      if (!w) return;
+
+      const d = Number(desirIdx[`${varName}|${cls}|${pathway}`]);
+      if (isNaN(d)) return;
+
+      num += (w * d);
+      den += w;
+
+      contributions.push({ varName, cls, w, d, wd: (w * d) });
+      meta.used++;
+    });
+
+    // Normalized score
+    const score = (den > 0) ? (100 * (num / den)) : 0;
+
+    // ════════════════════════════════════════════════════════════════════
+    // 🆕 PATHWAY-SPECIFIC ELIGIBILITY CHECKS (NEW LOGIC)
+    // ════════════════════════════════════════════════════════════════════
+
+    let eligibility = 'YES';
+    const eligibilityReasons = [];
+
+    if (pathway === 'AWD-CH₄') {
+      // AWD Eligibility Requirements:
+      // 1. Must be growing flooded rice
+      // 2. Must use continuous flooding (baseline) - NOT already practicing AWD
+
+      const mainCrop = signals['MAIN_CROP']?.value || '';
+      const waterMgmt = signals['WATER_MANAGEMENT']?.value || '';
+
+      Logger.log('[AWD Check] MAIN_CROP=' + mainCrop + ', WATER_MANAGEMENT=' + waterMgmt);
+
+      if (!mainCrop) {
+        eligibility = 'UNKNOWN';
+        eligibilityReasons.push('Crop type unknown - need to ask main crop question');
+      } else if (mainCrop !== 'RICE_FLOODED' && mainCrop !== 'RICE-FLOODED' && 
+                 !String(mainCrop).toLowerCase().includes('rice') || 
+                 String(mainCrop).toLowerCase().includes('aerobic')) {
+        eligibility = 'NO';
+        eligibilityReasons.push('AWD pathway only applicable for flooded rice. Your crop: ' + mainCrop);
+      } else if (!waterMgmt) {
+        eligibility = 'UNKNOWN';
+        eligibilityReasons.push('Water management unknown - need to ask Q_M049');
+      } else if (waterMgmt === 'AWD_MILD' || waterMgmt === 'AWD_SEVERE' || 
+                 String(waterMgmt).toLowerCase().includes('awd')) {
+        eligibility = 'NO';
+        eligibilityReasons.push('Already practicing AWD (no additionality). Baseline required: continuous flooding');
+      } else if (waterMgmt === 'CONTINUOUS_FLOOD' || waterMgmt === 'CONTINUOUS-FLOOD' ||
+                 String(waterMgmt).toLowerCase().includes('continuous')) {
+        eligibility = 'YES'; // ✅ Eligible!
+        eligibilityReasons.push('✅ Eligible: Flooded rice with continuous flooding baseline');
+      } else {
+        eligibility = 'CONDITIONAL';
+        eligibilityReasons.push('Uncertain baseline - verify flooding practice');
+      }
+    }
+
+    else if (pathway === 'BIOCHAR') {
+      // BIOCHAR Eligibility Requirements:
+      // 1. Must be applying biochar to soil
+
+      const biocharApp = signals['BIOCHAR_APPLICATION']?.value || '';
+
+      Logger.log('[BIOCHAR Check] BIOCHAR_APPLICATION=' + biocharApp);
+
+      if (!biocharApp) {
+        eligibility = 'UNKNOWN';
+        eligibilityReasons.push('Biochar application status unknown - need to ask Q_M055');
+      } else if (biocharApp === 'YES' || String(biocharApp).toLowerCase() === 'yes') {
+        eligibility = 'YES'; // ✅ Eligible!
+        eligibilityReasons.push('✅ Eligible: Applying biochar to soil');
+      } else if (biocharApp === 'PLANNING') {
+        eligibility = 'CONDITIONAL';
+        eligibilityReasons.push('Planning to apply biochar - eligible once applied');
+      } else {
+        eligibility = 'NO';
+        eligibilityReasons.push('Not applying biochar - must apply biochar for this pathway');
+      }
+    }
+
+    else if (pathway === 'ERW') {
+      // ERW Eligibility Requirements:
+      // 1. Must be applying rock powder amendments (basalt, olivine, or other silicates)
+
+      const erwRock = signals['ERW_ROCK_TYPE']?.value || '';
+
+      Logger.log('[ERW Check] ERW_ROCK_TYPE=' + erwRock);
+
+      if (!erwRock) {
+        eligibility = 'UNKNOWN';
+        eligibilityReasons.push('Rock amendment status unknown - need to ask Q_M060');
+      } else if (erwRock === 'NONE' || String(erwRock).toLowerCase() === 'none') {
+        eligibility = 'NO';
+        eligibilityReasons.push('Not applying rock amendments - must apply basalt/olivine for ERW pathway');
+      } else if (erwRock === 'BASALT' || erwRock === 'OLIVINE') {
+        eligibility = 'YES'; // ✅ Eligible!
+        eligibilityReasons.push('✅ Eligible: Applying ' + erwRock + ' rock powder (ideal for ERW)');
+      } else if (erwRock === 'OTHER') {
+        eligibility = 'CONDITIONAL';
+        eligibilityReasons.push('Applying rock powder - verify it is silicate-based (basalt/olivine preferred)');
+      } else {
+        eligibility = 'YES';
+        eligibilityReasons.push('Applying rock amendment: ' + erwRock);
+      }
+    }
+
+    else if (pathway === 'RP-SOC') {
+      // RP-SOC is universal (no crop-specific requirements)
+      // Eligibility based on score and data availability
+      if (den === 0) {
+        eligibility = 'CONDITIONAL';
+        eligibilityReasons.push('Insufficient data - need soil/management inputs');
+      } else {
+        eligibility = 'YES';
+        eligibilityReasons.push('Regenerative agriculture pathway (soil carbon sequestration)');
+      }
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // END ELIGIBILITY CHECKS
+    // ════════════════════════════════════════════════════════════════════
+
+    // Priority banding (tune if you want)
+    let priority = 'MEDIUM';
+    if (eligibility === 'NO') {
+      priority = 'EXCLUDED';
+    } else if (eligibility === 'UNKNOWN' || eligibility === 'CONDITIONAL') {
+      priority = 'LOW';
+    } else if (score >= 70) {
+      priority = 'HIGH';
+    } else if (score < 45) {
+      priority = 'LOW';
+    }
+
+    // MRV tier proxy: count high-importance drivers used
+    const highW = contributions.filter(x => x.w >= 7).length;
+    let mrv_tier = 'STANDARD';
+    if (eligibility === 'NO' || eligibility === 'UNKNOWN') {
+      mrv_tier = 'N/A';
+    } else if (eligibility === 'CONDITIONAL') {
+      mrv_tier = 'HIGH';
+    } else if (highW >= 4) {
+      mrv_tier = 'HIGH';
+    } else if (highW <= 1) {
+      mrv_tier = 'LIGHT';
+    }
+
+    // Explanations
+    contributions.sort((a, b) => (b.wd - a.wd));
+    const top = contributions.slice(0, 3);
+
+    const reasons = [];
+
+    // 🆕 Add eligibility reasons FIRST
+    eligibilityReasons.forEach(r => reasons.push(r));
+
+    // Then add scoring details
+    if (eligibility === 'YES' || eligibility === 'CONDITIONAL') {
+      reasons.push(`Score = ${score.toFixed(1)} / 100 (normalized).`);
+      if (priority === 'HIGH') {
+        reasons.push('High suitability under current factor context.');
+      } else if (priority === 'LOW') {
+        reasons.push('Low suitability under current factor context.');
+      } else if (priority === 'MEDIUM') {
+        reasons.push('Moderate suitability under current factor context.');
+      }
+
+      if (top.length) {
+        reasons.push('Top drivers: ' + top.map(x => `${x.varName}: ${x.cls} (w=${x.w}, d=${x.d})`).join(' | '));
+      }
+    }
+
+    const final_text =
+      eligibility === 'NO' 
+        ? `Not eligible for ${pathway}. ${eligibilityReasons.join(' ')}`
+        : eligibility === 'UNKNOWN'
+        ? `Eligibility unknown for ${pathway}. ${eligibilityReasons.join(' ')}`
+        : `Normalized suitability score is ${score.toFixed(1)}/100 using weights (0–10) and desirability (0–1). ` +
+          (top.length ? (`Key drivers: ${top.map(x => `${x.varName}=${x.cls}`).join('; ')}.`) : '');
+
+    results[pathway] = {
+      eligibility,
+      priority,
+      mrv_tier,
+      score: score.toFixed(1), // 🆕 NEW: Include score in results
+      reasons: reasons.slice(0, 5), // Increased from 4 to 5 to include eligibility reason
+      flags: [],
+      final_text,
+      mrv_variables: []
+    };
+  });
+
+  const resp = { ok: true, selections, results };
+  if (debug) resp.meta = meta;
+  return resp;
+}
+
+
+/**
+ * Back-compat wrapper:
+ * If your frontend still calls evaluateCPOS_v2(), keep it working.
+ */
+function evaluateCPOS_v2(selections, opts) {
+  return evaluateCPOS_Lite_v1(selections, opts || {});
+}
+
+/** =========================================================
+ * Save assessment (unchanged)
+ * payload = { clientId, siteId, siteName, lat, lon, cropSystem, state, district, selections, inputs, results, notes }
+ ** ========================================================= */
+function saveCPOSAssessment(payload) {
+  payload = payload || {};
+  const sh = cpos_getSheet_('CPOS_Assessments');
+
+  const assessmentId = payload.Assessment_ID || ('CPOS-' + Utilities.getUuid().slice(0, 8).toUpperCase());
+  const createdAt = payload.Created_At || cpos_nowISO_();
+  const createdBy = payload.Created_By || Session.getActiveUser().getEmail() || 'unknown';
+  const selections = payload.selections || payload.inputs || {};
+
+  const row = {
+    Assessment_ID: assessmentId,
+    Created_At: createdAt,
+    Created_By: createdBy,
+    Client_ID: payload.Client_ID || payload.clientId || 'Default',
+    Site_ID: payload.Site_ID || payload.siteId || '',
+    Site_Name: payload.Site_Name || payload.siteName || '',
+    Latitude: payload.Latitude || payload.lat || '',
+    Longitude: payload.Longitude || payload.lon || '',
+    Crop_System: payload.Crop_System || payload.cropSystem || '',
+    State: payload.State || payload.state || '',
+    District: payload.District || payload.district || '',
+    Selected_Classes_JSON: JSON.stringify(selections || {}),
+    Pathway_Results_JSON: JSON.stringify(payload.results || {}),
+    Top_Reasons_JSON: JSON.stringify(payload.topReasons || {}),
+    Risk_Flags_JSON: JSON.stringify(payload.riskFlags || []),
+    MRV_Plan_JSON: JSON.stringify(payload.mrvPlan || {}),
+    Notes: payload.Notes || payload.notes || ''
+  };
+
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(h => String(h || '').trim());
+  const out = headers.map(h => row[h] !== undefined ? row[h] : '');
+  sh.appendRow(out);
+
+  return { ok: true, Assessment_ID: assessmentId };
+}
+
+/** =========================================================
+ * Draft upsert (unchanged)
+ * ========================================================= */
+function cpos_upsertDraft_(p) {
+  if (!p || !p.sessionId) throw new Error('Draft: sessionId missing');
+
+  const sh = cpos_getSheet_('CPOS_Drafts');
+
+  const values = sh.getDataRange().getValues();
+  if (!values || !values.length) throw new Error('CPOS_Drafts: missing header row');
+
+  const headers = values[0].map(h => String(h || '').trim());
+
+  const idxSession = headers.indexOf('Session_ID');
+  const idxUpdated = headers.indexOf('Updated_At');
+  const idxSelJson = headers.indexOf('Selections_JSON');
+  const idxSelHuman = headers.indexOf('Selections_Human');
+  const idxCreated = headers.indexOf('Created_At');
+
+  if (idxSession < 0 || idxUpdated < 0 || idxSelJson < 0) {
+    throw new Error('CPOS_Drafts missing required headers: Session_ID, Updated_At, Selections_JSON');
+  }
+
+  const now = cpos_nowISO_();
+  const selections = p.selections || {};
+  const selJson = JSON.stringify(selections);
+  const selHuman = Object.keys(selections).map(k => `${k}: ${selections[k]}`).join(' | ');
+
+  // update existing
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][idxSession] || '') === String(p.sessionId)) {
+      if (idxUpdated >= 0) sh.getRange(i + 1, idxUpdated + 1).setValue(now);
+      if (idxSelJson >= 0) sh.getRange(i + 1, idxSelJson + 1).setValue(selJson);
+      if (idxSelHuman >= 0) sh.getRange(i + 1, idxSelHuman + 1).setValue(selHuman);
+      return { ok: true, updated: true };
+    }
+  }
+
+  // append new
+  const out = headers.map(h => {
+    if (h === 'Draft_ID') return 'DRAFT-' + Utilities.getUuid();
+    if (h === 'Session_ID') return String(p.sessionId);
+    if (h === 'Created_At') return now;
+    if (h === 'Updated_At') return now;
+    if (h === 'Selections_JSON') return selJson;
+    if (h === 'Selections_Human') return selHuman;
+    return '';
+  });
+
+  sh.appendRow(out);
+  return { ok: true, created: true };
+}
+
+
+
+/**
+ * PUBLIC: getCPOSQuestionnaireConfig()
+ * Returns questionnaire config + Bounds classes for mapping validation.
+ */
+function getCPOSQuestionnaireConfig() {
+  const bank = cpos_getTableFast_('CPOS_Q_Bank');
+  const opts = cpos_getTableFast_('CPOS_Q_Options');
+  const deriv = cpos_getTableFast_('CPOS_Q_Derivation_Rules');
+  const routes = cpos_getTableFast_('CPOS_Q_Routing_Rules');
+  const map = cpos_getTableFast_('CPOS_Q_Signal_to_LiteFactor_Map');
+  const bounds = cpos_getTableFast_('CPOS_Lite_Bounds');
+
+  return {
+    ok: true,
+    bank: normalizeQuestionnaireFields(bank.rows || []),              // ✅ NORMALIZE!
+    options: normalizeQuestionnaireFields(opts.rows || []),           // ✅ NORMALIZE!
+    derivationRules: normalizeQuestionnaireFields(deriv.rows || []),  // ✅ NORMALIZE!
+    routingRules: normalizeQuestionnaireFields(routes.rows || []),    // ✅ NORMALIZE!
+    signalToLiteMap: normalizeQuestionnaireFields(map.rows || []),    // ✅ NORMALIZE!
+    liteBounds: normalizeQuestionnaireFields(bounds.rows || [])       // ✅ NORMALIZE!
+  };
+}
+
+
+
+/**
+ * PUBLIC: saveCPOSQuestionnaireSession(payload)
+ * payload = {
+ *   session: { Session_ID?, Client_ID?, Site_ID?, Site_Name?, Mode?, Min_Q_Target?, Max_Q_Cap?, Status? },
+ *   responses: [ { Question_ID, Answer_Raw, Answer_Normalized?, Derived_Signals_JSON? } ],
+ *   signals:   [ { Signal_Key, Signal_Value, Confidence?, Source? } ],
+ *   summary:   { ... }   // optional
+ * }
+ */
+function saveCPOSQuestionnaireSession(payload) {
+  payload = payload || {};
+  const now = cpos_nowISO_();
+  const user = Session.getActiveUser().getEmail() || 'unknown';
+
+  const sess = payload.session || {};
+  const sessionId = sess.Session_ID || ('Q-' + Utilities.getUuid().slice(0, 10).toUpperCase());
+  const version = sess.Version || payload.version || 'v1';
+
+  // --- upsert session ---
+  const shS = cpos_getSheet_('CPOS_Q_Sessions');
+  const sVals = shS.getDataRange().getValues();
+  if (!sVals || !sVals.length) throw new Error('CPOS_Q_Sessions: missing header row');
+  const sHdr = sVals[0].map(h => String(h || '').trim());
+  const idxSid = sHdr.indexOf('Session_ID');
+  if (idxSid < 0) throw new Error('CPOS_Q_Sessions: missing Session_ID');
+
+  // ✅ FIX: Extract probe data
+  const responses = Array.isArray(payload.responses) ? payload.responses : [];
+  const probeResponses = responses.filter(r => r.IsProbe || r.Is_Probe);
+  const probeCount = probeResponses.length;
+  
+  // Calculate average confidence
+  let totalConf = 0;
+  let confCount = 0;
+  responses.forEach(r => {
+    const conf = parseFloat(r.Confidence_0_1 || r.ConfidenceBoost || 0);
+    if (conf > 0) {
+      totalConf += conf;
+      confCount++;
+    }
+  });
+  const avgConfidence = confCount > 0 ? (totalConf / confCount) : 0.85;
+  
+  // Get probe IDs that were triggered
+  const probeTriggered = probeResponses
+    .map(r => String(r.Question_ID || r.QuestionID || '').replace('PROBE_', ''))
+    .filter(Boolean)
+    .join(',');
+
+  const rowObj = {
+    Session_ID: sessionId,
+    Created_At: sess.Created_At || now,
+    Created_By: sess.Created_By || user,
+    Client_ID: sess.Client_ID || 'Default',
+    Site_ID: sess.Site_ID || '',
+    Site_Name: sess.Site_Name || '',
+    Mode: sess.Mode || 'BASIC',
+    Min_Target: sess.Min_Target || sess.Min_Q_Target || 20,
+    Max_Cap: sess.Max_Cap || sess.Max_Q_Cap || 50,
+    Answered_Count: sess.Answered_Count || responses.length || 0,
+    Probe_Count: probeCount, // ✅ NEW
+    Probe_Triggered: probeTriggered, // ✅ NEW
+    Avg_Confidence: avgConfidence, // ✅ NEW
+    Status: sess.Status || 'COMPLETED',
+    Summary_JSON: JSON.stringify(payload.summary || {}),
+    Version: version
+  };
+
+  let updated = false;
+  for (let i = 1; i < sVals.length; i++) {
+    if (String(sVals[i][idxSid] || '') === String(sessionId)) {
+      const out = sHdr.map(h => rowObj[h] !== undefined ? rowObj[h] : sVals[i][sHdr.indexOf(h)]);
+      shS.getRange(i + 1, 1, 1, sHdr.length).setValues([out]);
+      updated = true;
+      break;
+    }
+  }
+  if (!updated) {
+    shS.appendRow(sHdr.map(h => rowObj[h] !== undefined ? rowObj[h] : ''));
+  }
+
+  // --- append responses ---
+  const shR = cpos_getSheet_('CPOS_Q_Responses');
+  const rHdr = shR.getRange(1, 1, 1, shR.getLastColumn()).getValues()[0].map(h => String(h || '').trim());
+
+  if (responses.length) {
+    const rows = responses.map(r => {
+      const rr = {
+        Session_ID: sessionId,
+        Answered_At: now,
+        Question_ID: r.Question_ID || r.QuestionID || '',
+        Answer_Raw: r.Answer_Raw || r.AnswerRaw !== undefined ? String(r.Answer_Raw || r.AnswerRaw) : '',
+        Answer_Codes: r.Answer_Codes || r.AnswerCodes ? String(r.Answer_Codes || r.AnswerCodes) : '',
+        Is_Probe: r.Is_Probe || r.IsProbe || false, // ✅ NEW
+        Probe_Reason: r.Probe_Reason || r.ProbeReason || '', // ✅ NEW
+        Confidence_Boost: r.Confidence_Boost || r.ConfidenceBoost || 0, // ✅ NEW
+        Derived_Signals_JSON: r.Derived_Signals_JSON ? String(r.Derived_Signals_JSON) : '',
+        Version: version
+      };
+      return rHdr.map(h => rr[h] !== undefined ? rr[h] : '');
+    });
+
+    shR.getRange(shR.getLastRow() + 1, 1, rows.length, rHdr.length).setValues(rows);
+  }
+
+  Logger.log('✅ Questionnaire session saved: ' + sessionId + ', Probes: ' + probeCount); // ✅ NEW log
+
+  return { ok: true, Session_ID: sessionId, updated };
+}
+
+
+
+/** =========================================================
+ * Validation + sample tests
+ * ========================================================= */
+function TEST_validateLiteTables() {
+  const bounds = cpos_getTableFast_('CPOS_Lite_Bounds', { allowMissing: true });
+  const desir = cpos_getTableFast_('CPOS_Lite_Desirability', { allowMissing: true });
+  const weights = cpos_getTableFast_('CPOS_Lite_Weights', { allowMissing: true });
+
+  const warnings = [];
+  const errors = [];
+
+  const requiredBounds = ['Factor_ID', 'Factor_Category', 'Variable_Name', 'Factor_Display_Name', 'Class_Order', 'Class_Label', 'Lower_Bound', 'Upper_Bound', 'Lower_Inclusive', 'Upper_Inclusive', 'Unit'];
+  const requiredDesir = ['Variable_Name', 'Class_Label', 'Pathway', 'Desirability_0_1', 'Shape', 'Pathway_Context'];
+  const requiredWeights = ['Variable_Name', 'Pathway', 'Sensitivity_Weight_0_10'];
+
+  function missingCols(required, headers) {
+    return required.filter(h => headers.indexOf(h) < 0);
+  }
+
+  const boundsMissing = missingCols(requiredBounds, bounds.headers || []);
+  const desirMissing = missingCols(requiredDesir, desir.headers || []);
+  const weightsMissing = missingCols(requiredWeights, weights.headers || []);
+
+  if (boundsMissing.length) errors.push(`Bounds missing headers: ${boundsMissing.join(', ')}`);
+  if (desirMissing.length) errors.push(`Desirability missing headers: ${desirMissing.join(', ')}`);
+  if (weightsMissing.length) errors.push(`Weights missing headers: ${weightsMissing.join(', ')}`);
+
+  const boundsMap = {};
+  const classOrderMap = {};
+
+  (bounds.rows || []).forEach(r => {
+    const varName = cpos_normKey_(r.Variable_Name);
+    const classLabel = cpos_normKey_(r.Class_Label);
+    if (!varName || !classLabel) return;
+
+    if (!boundsMap[varName]) boundsMap[varName] = new Set();
+    boundsMap[varName].add(classLabel);
+
+    const order = Number(r.Class_Order);
+    if (!isNaN(order)) {
+      const key = `${varName}|${order}`;
+      if (classOrderMap[key]) {
+        errors.push(`Duplicate Class_Order ${order} for Variable_Name ${varName}`);
+      } else {
+        classOrderMap[key] = true;
+      }
+    }
+
+    const lo = Number(r.Lower_Bound);
+    const hi = Number(r.Upper_Bound);
+    if (!isNaN(lo) && !isNaN(hi) && lo > hi) {
+      errors.push(`Bounds invalid for ${varName} (${classLabel}): Lower_Bound > Upper_Bound`);
+    }
+  });
+
+  (desir.rows || []).forEach(r => {
+    const varName = cpos_normKey_(r.Variable_Name);
+    const classLabel = cpos_normKey_(r.Class_Label);
+    const d = Number(r.Desirability_0_1);
+
+    if (!varName || !classLabel) return;
+    if (!boundsMap[varName]) {
+      warnings.push(`Desirability Variable_Name not in Bounds: ${varName}`);
+    } else if (!boundsMap[varName].has(classLabel)) {
+      warnings.push(`Desirability Class_Label not in Bounds: ${varName} -> ${classLabel}`);
+    }
+
+    if (isNaN(d) || d < 0 || d > 1) {
+      errors.push(`Desirability_0_1 out of range for ${varName} (${classLabel})`);
+    }
+  });
+
+  (weights.rows || []).forEach(r => {
+    const varName = cpos_normKey_(r.Variable_Name);
+    const w = Number(r.Sensitivity_Weight_0_10);
+
+    if (varName && !boundsMap[varName]) {
+      warnings.push(`Weights Variable_Name not in Bounds: ${varName}`);
+    }
+
+    if (isNaN(w) || w < 0 || w > 10) {
+      errors.push(`Sensitivity_Weight_0_10 out of range for ${varName}`);
+    }
+  });
+
+  Logger.log('TEST_validateLiteTables results');
+  Logger.log('Errors: ' + JSON.stringify(errors));
+  Logger.log('Warnings: ' + JSON.stringify(warnings));
+  Logger.log('Counts: bounds=' + (bounds.rows || []).length + ', desir=' + (desir.rows || []).length + ', weights=' + (weights.rows || []).length);
+}
+
+function TEST_sampleEvaluation() {
+  const bounds = cpos_getTableFast_('CPOS_Lite_Bounds', { allowMissing: true });
+  const selections = {};
+
+  const byVar = {};
+  (bounds.rows || []).forEach(r => {
+    const varName = cpos_normKey_(r.Variable_Name);
+    const classLabel = cpos_normKey_(r.Class_Label);
+    if (!varName || !classLabel) return;
+    if (!byVar[varName]) byVar[varName] = classLabel;
+  });
+
+  Object.keys(byVar).slice(0, 3).forEach(k => {
+    selections[k] = byVar[k];
+  });
+
+  Logger.log('TEST_sampleEvaluation selections=' + JSON.stringify(selections));
+  const r = evaluateCPOS_Lite_v1(selections, { debug: true });
+  Logger.log(JSON.stringify(r, null, 2));
+}
+
+
+function saveCPOSSession(payload) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // Save session with probe data
+  let sessionSheet = ss.getSheetByName('CPOS_Sessions');
+  if (!sessionSheet) {
+    sessionSheet = ss.insertSheet('CPOS_Sessions');
+    sessionSheet.appendRow(['SessionID', 'Timestamp', 'Mode', 'MinTarget', 
+                           'MaxCap', 'AnsweredCount', 'ProbeCount', 
+                           'ProbeTriggered', 'AvgConfidence', 'Status']);
+  }
+  
+  const session = payload.session || {};
+  const probeIds = payload.responses
+    .filter(r => r.IsProbe)
+    .map(r => r.QuestionID.replace('PROBE_', ''))
+    .join(',');
+  
+  sessionSheet.appendRow([
+    session.SessionID,
+    new Date(),
+    session.Mode || 'BASIC',
+    session.MinTarget || 20,
+    session.MaxCap || 50,
+    session.AnsweredCount || 0,
+    session.ProbeCount || 0,
+    probeIds || '',
+    payload.avgConfidence || 0.85,
+    session.Status || 'COMPLETED'
+  ]);
+  
+  // Save responses with probe metadata
+  let responseSheet = ss.getSheetByName('CPOS_Responses');
+  if (!responseSheet) {
+    responseSheet = ss.insertSheet('CPOS_Responses');
+    responseSheet.appendRow(['SessionID', 'Timestamp', 'QuestionID', 
+                            'AnswerRaw', 'AnswerCodes', 'IsProbe', 
+                            'ProbeReason', 'ConfidenceBoost']);
+  }
+  
+  const responses = payload.responses || [];
+  responses.forEach(function(resp) {
+    responseSheet.appendRow([
+      session.SessionID,
+      new Date(),
+      resp.QuestionID,
+      resp.AnswerRaw || '',
+      resp.AnswerCodes || '',
+      resp.IsProbe || false,
+      resp.ProbeReason || '',
+      resp.ConfidenceBoost || 0
+    ]);
+  });
+  
+  Logger.log('Session saved: ' + session.SessionID + ', Probes: ' + (session.ProbeCount || 0));
+  
+  return {
+    success: true,
+    sessionId: session.SessionID,
+    timestamp: new Date().toISOString()
+  };
+}
+
+
+/**
+ * Normalize snake_case field names to PascalCase for frontend
+ */
+function normalizeQuestionnaireFields(data) {
+  const fieldMap = {
+    // Question fields
+    'Question_ID': 'QuestionID',
+    'Question_Text_EN': 'QuestionTextEN',
+    'Question_Text_HI': 'QuestionTextHI',
+    'Answer_Type': 'AnswerType',
+    'Help_Text_EN': 'HelpTextEN',
+    'Help_Text_HI': 'HelpTextHI',
+    'Is_Active': 'IsActive',
+    'Is_Required': 'IsRequired',
+    'Min_Answers': 'MinAnswers',
+    'Max_Answers': 'MaxAnswers',
+    'Group_Code': 'GroupCode',
+    'Factor_Code': 'FactorCode',
+    'Base_Priority': 'BasePriority',
+    'Units_Label': 'UnitsLabel',
+    'Confidentiality_Tag': 'ConfidentialityTag',
+    'Context_Template': 'ContextTemplate',
+    
+    // Option fields
+    'Option_ID': 'OptionID',
+    'Option_Code': 'OptionCode',
+    'Option_Label': 'OptionLabel',
+    'Option_Label_EN': 'OptionLabelEN',
+    'Option_Label_HI': 'OptionLabelHI',
+    'Option_Order': 'OptionOrder',
+    
+    // Derivation rule fields
+    'Rule_ID': 'RuleID',
+    'When_Question_ID': 'WhenQuestionID',
+    'When_Operator': 'WhenOperator',
+    'When_Value': 'WhenValue',
+    'Then_Signal_Key': 'ThenSignalKey',
+    'Then_Signal_Value': 'ThenSignalValue',
+    'Then_Signal_Score': 'ThenSignalScore',
+    
+    // Routing rule fields
+    'Route_ID': 'RouteID',
+    'Current_Question_ID': 'CurrentQuestionID',
+    'Next_Question_ID': 'NextQuestionID',
+    'Condition_Signal_Key': 'ConditionSignalKey',
+    'Condition_Operator': 'ConditionOperator',
+    'Condition_Value': 'ConditionValue',
+    'Route_Action': 'RouteAction',
+    
+    // Signal mapping fields
+    'Signal_Key': 'SignalKey',
+    'Lite_Variable_Name': 'LiteVariableName',
+    'Mapping_Method': 'MappingMethod',
+    'When_Signal_Value': 'WhenSignalValue',
+    'Then_Lite_Class': 'ThenLiteClass',
+    'Estimate_Formula': 'EstimateFormula',
+    
+    // Bounds fields
+    'Variable_Name': 'VariableName',
+    'Factor_ID': 'FactorID',
+    'Factor_Category': 'FactorCategory',
+    'Factor_Display_Name': 'FactorDisplayName',
+    'Class_Label': 'ClassLabel',
+    'Class_Order': 'ClassOrder',
+    'Lower_Bound': 'LowerBound',
+    'Upper_Bound': 'UpperBound',
+    'Lower_Inclusive': 'LowerInclusive',
+    'Upper_Inclusive': 'UpperInclusive'
+  };
+  
+  if (Array.isArray(data)) {
+    return data.map(row => {
+      const normalized = {};
+      for (const [oldKey, value] of Object.entries(row)) {
+        const newKey = fieldMap[oldKey] || oldKey;
+        normalized[newKey] = value;
+      }
+      return normalized;
+    });
+  }
+  
+  return data;
+}
+
+
+/** =========================================================
+ * Quick tests
+ * ========================================================= */
+function TEST_LITE_getData() {
+  const d = getCPOSData_Lite();
+  Logger.log('ok=' + d.ok);
+  Logger.log('vars=' + Object.keys(d.aspectsMap || {}).length);
+  Logger.log('desir keys=' + Object.keys(d.desirIdx || {}).length);
+  Logger.log('w keys=' + Object.keys(d.wIdx || {}).length);
+}
+
+function TEST_LITE_eval() {
+  const selections = {
+    'Crop Type': 'Rice (flooded)',
+    'Water Management Intensity': 'AWD (intermittent drying)',
+    'Drainage Class': 'Moderately / Imperfectly drained'
+  };
+  const r = evaluateCPOS_Lite_v1(selections, { debug: true });
+  Logger.log(JSON.stringify(r, null, 2));
+}
+
+// Run this in Apps Script console
+function testGetTables() {
+  const result = getCPOSLiteTables();
+  Logger.log('Bounds rows: ' + result.bounds.length);
+  Logger.log('Desirability rows: ' + result.desirability.length);
+  Logger.log('Weights rows: ' + result.weights.length);
+  Logger.log('First bound: ' + JSON.stringify(result.bounds));
+}
+
+
+function debugQuestionColumns() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const qBank = ss.getSheetByName('CPOS_Q_Bank');  // ← Corrected name
+  
+  if (!qBank) {
+    Logger.log('❌ CPOS_Q_Bank sheet not found!');
+    return;
+  }
+  
+  const headers = qBank.getRange(1, 1, 1, qBank.getLastColumn()).getValues()[0];
+  
+  Logger.log('=== CPOS_Q_Bank Column Headers ===');
+  headers.forEach((h, i) => {
+    Logger.log(`Column ${i+1}: "${h}"`);
+  });
+  
+  Logger.log('\n=== First Data Row (Q_S001) ===');
+  const firstRow = qBank.getRange(2, 1, 1, headers.length).getValues()[0];
+  headers.forEach((h, i) => {
+    Logger.log(`${h}: ${firstRow[i]}`);
+  });
+}
+
+function finalValidationTest() {
+  Logger.log('=== FINAL VALIDATION TEST ===\n');
+  
+  // Test 1: CPOS Lite Tables
+  const tables = getCPOSLiteTables();
+  Logger.log('✅ Bounds: ' + tables.bounds.length + ' rows');
+  Logger.log('✅ Desirability: ' + tables.desirability.length + ' rows');
+  Logger.log('✅ Weights: ' + tables.weights.length + ' rows\n');
+  
+  // Test 2: Questionnaire Config
+  const config = getCPOSQuestionnaireConfig();
+  Logger.log('✅ Q_Bank: ' + config.bank.length + ' questions');
+  Logger.log('✅ Q_Options: ' + config.options.length + ' options');
+  Logger.log('✅ Derivation Rules: ' + config.derivationRules.length);
+  Logger.log('✅ Routing Rules: ' + config.routingRules.length);
+  Logger.log('✅ Signal Maps: ' + config.signalToLiteMap.length + '\n');
+  
+  // Test 3: Question Text Access
+  if (config.bank.length > 0) {
+    const q = config.bank[0];
+    Logger.log('=== FIRST QUESTION CHECK ===');
+    Logger.log('Question ID: ' + q.Question_ID);
+    Logger.log('English: ' + (q.Question_Text_EN || '❌ MISSING'));
+    Logger.log('Hindi: ' + (q.Question_Text_HI || '❌ MISSING'));
+    Logger.log('Answer Type: ' + q.Answer_Type);
+    Logger.log('Is Active: ' + q.Is_Active);
+    Logger.log('Is Required: ' + q.Is_Required + '\n');
+  }
+  
+  // Test 4: Sample Classification
+  Logger.log('=== SAMPLE DATA CHECK ===');
+  if (tables.bounds.length > 0) {
+    const firstBound = tables.bounds[0];
+    Logger.log('First variable: ' + firstBound.Variable_Name);
+    Logger.log('Factor: ' + firstBound.Factor_Display_Name);
+    Logger.log('Class: ' + firstBound.Class_Label);
+    Logger.log('Range: ' + firstBound.Lower_Bound + ' - ' + firstBound.Upper_Bound);
+    Logger.log('Unit: ' + firstBound.Unit);
+  }
+  
+  Logger.log('\n=== VALIDATION COMPLETE ===');
+  Logger.log('Status: READY FOR DEPLOYMENT 🚀');
+}
+
+
+
+function debugDerivationSheetColumns() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('CPOS_Q_Derivation_Rules');
+  
+  if (!sheet) {
+    Logger.log('❌ Sheet "CPOS_Q_Derivation_Rules" not found!');
+    Logger.log('Available sheets: ' + ss.getSheets().map(s => s.getName()).join(', '));
+    return;
+  }
+  
+  Logger.log('=== CPOS_Q_DERIVATION_RULES COLUMNS ===');
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  
+  headers.forEach((h, i) => {
+    Logger.log(`Column ${i+1}: "${h}"`);
+  });
+  
+  Logger.log('\n=== FIRST RULE (Row 2) ===');
+  if (sheet.getLastRow() < 2) {
+    Logger.log('❌ No data rows! Sheet is empty.');
+    return;
+  }
+  
+  const firstRow = sheet.getRange(2, 1, 1, headers.length).getValues()[0];
+  headers.forEach((h, i) => {
+    const value = firstRow[i];
+    const type = typeof value;
+    Logger.log(`${h}: ${value} (${type})`);
+  });
+  
+  Logger.log('\n=== ROW COUNT ===');
+  Logger.log('Total rows with data: ' + (sheet.getLastRow() - 1));
+}
+
+
+// ════════════════════════════════════════════════════════════════════
+// BACKEND DEBUG & TEST FUNCTIONS
+// Add these to your Code.gs file for testing
+// ════════════════════════════════════════════════════════════════════
+
+// ────────────────────────────────────────────────────────────────────
+// TEST 1: Verify Derivation Rules Loaded
+// ────────────────────────────────────────────────────────────────────
+function DEBUG_CheckDerivationRules() {
+  const deriv = cpos_getTableFast_('CPOS_Q_Derivation_Rules');
+
+  Logger.log('═══ DERIVATION RULES CHECK ═══');
+  Logger.log('Total rules: ' + deriv.rows.length);
+
+  // Check for new rules (R021-R041)
+  const newRules = deriv.rows.filter(r => {
+    const id = String(r.Rule_ID || '');
+    const num = parseInt(id.replace('R', ''));
+    return num >= 21 && num <= 41;
+  });
+
+  Logger.log('New rules (R021-R041): ' + newRules.length + ' (expect: 21)');
+
+  if (newRules.length === 21) {
+    Logger.log('✅ All 21 new derivation rules loaded!');
+  } else {
+    Logger.log('❌ MISSING RULES! Expected 21, found ' + newRules.length);
+  }
+
+  // Show sample rules
+  Logger.log('\n═══ SAMPLE NEW RULES ═══');
+  const samples = [
+    'R021', // MAIN_CROP - RICE_FLOODED
+    'R030', // WATER_MANAGEMENT - CONTINUOUS_FLOOD
+    'R035', // BIOCHAR_APPLICATION - YES
+    'R038'  // ERW_ROCK_TYPE - BASALT
+  ];
+
+  samples.forEach(ruleId => {
+    const rule = deriv.rows.find(r => String(r.Rule_ID) === ruleId);
+    if (rule) {
+      Logger.log(ruleId + ': ' + rule.When_Question_ID + ' = ' + 
+                 rule.When_Value + ' → ' + rule.Then_Signal_Key + 
+                 ' = ' + rule.Then_Signal_Value);
+    } else {
+      Logger.log('❌ ' + ruleId + ': NOT FOUND');
+    }
+  });
+
+  return { total: deriv.rows.length, newRules: newRules.length };
+}
+
+
+// ────────────────────────────────────────────────────────────────────
+// TEST 2: Verify Routing Rules Loaded
+// ────────────────────────────────────────────────────────────────────
+function DEBUG_CheckRoutingRules() {
+  const routing = cpos_getTableFast_('CPOS_Q_Routing_Rules');
+
+  Logger.log('═══ ROUTING RULES CHECK ═══');
+  Logger.log('Total rules: ' + routing.rows.length);
+
+  // Check for new rules (RT091-RT098)
+  const newRules = routing.rows.filter(r => {
+    const id = String(r.Route_ID || '');
+    const num = parseInt(id.replace('RT', ''));
+    return num >= 91 && num <= 98;
+  });
+
+  Logger.log('New rules (RT091-RT098): ' + newRules.length + ' (expect: 8)');
+
+  if (newRules.length === 8) {
+    Logger.log('✅ All 8 new routing rules loaded!');
+  } else {
+    Logger.log('❌ MISSING RULES! Expected 8, found ' + newRules.length);
+  }
+
+  // Show sample rules
+  Logger.log('\n═══ SAMPLE NEW RULES ═══');
+  newRules.forEach(rule => {
+    Logger.log(rule.Route_ID + ': ' + rule.Current_Question_ID + 
+               ' → IF ' + rule.Condition_Signal_Key + ' = ' + 
+               rule.Condition_Value + ' → ' + rule.Route_Action + 
+               ' ' + rule.Next_Question_ID);
+  });
+
+  return { total: routing.rows.length, newRules: newRules.length };
+}
+
+
+// ────────────────────────────────────────────────────────────────────
+// TEST 3: Test Backend Eligibility Logic (AWD - Rice Farmer)
+// ────────────────────────────────────────────────────────────────────
+function DEBUG_TestAWD_RiceFarmer() {
+  Logger.log('═══ TEST: AWD - Flooded Rice Farmer ═══');
+
+  const result = evaluateCPOS_Lite_v1(
+    { 'Soil Organic Carbon (%)': '2.5' },
+    {
+      signals: {
+        'MAIN_CROP': { value: 'RICE_FLOODED', confidence: 1.0 },
+        'WATER_MANAGEMENT': { value: 'CONTINUOUS_FLOOD', confidence: 1.0 },
+        'BIOCHAR_APPLICATION': { value: 'NO', confidence: 1.0 },
+        'ERW_ROCK_TYPE': { value: 'NONE', confidence: 1.0 }
+      },
+      debug: true
+    }
+  );
+
+  Logger.log('\nRESULTS:');
+  Logger.log('RP-SOC: ' + result.results['RP-SOC'].eligibility);
+  Logger.log('AWD-CH₄: ' + result.results['AWD-CH₄'].eligibility + ' (EXPECT: YES)');
+  Logger.log('  Reason: ' + result.results['AWD-CH₄'].reasons[0]);
+  Logger.log('BIOCHAR: ' + result.results['BIOCHAR'].eligibility + ' (EXPECT: NO)');
+  Logger.log('ERW: ' + result.results['ERW'].eligibility + ' (EXPECT: NO)');
+
+  const pass = result.results['AWD-CH₄'].eligibility === 'YES' &&
+               result.results['BIOCHAR'].eligibility === 'NO' &&
+               result.results['ERW'].eligibility === 'NO';
+
+  Logger.log('\n' + (pass ? '✅ TEST PASSED' : '❌ TEST FAILED'));
+  return result;
+}
+
+
+// ────────────────────────────────────────────────────────────────────
+// TEST 4: Test Backend Eligibility Logic (AWD - Already Practicing)
+// ────────────────────────────────────────────────────────────────────
+function DEBUG_TestAWD_AlreadyPracticing() {
+  Logger.log('═══ TEST: AWD - Already Practicing (Not Eligible) ═══');
+
+  const result = evaluateCPOS_Lite_v1(
+    { 'Soil Organic Carbon (%)': '2.5' },
+    {
+      signals: {
+        'MAIN_CROP': { value: 'RICE_FLOODED', confidence: 1.0 },
+        'WATER_MANAGEMENT': { value: 'AWD_MILD', confidence: 1.0 }
+      },
+      debug: true
+    }
+  );
+
+  Logger.log('\nRESULTS:');
+  Logger.log('AWD-CH₄: ' + result.results['AWD-CH₄'].eligibility + ' (EXPECT: NO)');
+  Logger.log('  Reason: ' + result.results['AWD-CH₄'].reasons[0]);
+
+  const pass = result.results['AWD-CH₄'].eligibility === 'NO';
+  Logger.log('\n' + (pass ? '✅ TEST PASSED' : '❌ TEST FAILED'));
+  return result;
+}
+
+
+// ────────────────────────────────────────────────────────────────────
+// TEST 5: Test Backend Eligibility Logic (AWD - Wheat Farmer)
+// ────────────────────────────────────────────────────────────────────
+function DEBUG_TestAWD_WheatFarmer() {
+  Logger.log('═══ TEST: AWD - Wheat Farmer (Not Eligible) ═══');
+
+  const result = evaluateCPOS_Lite_v1(
+    { 'Soil Organic Carbon (%)': '2.5' },
+    {
+      signals: {
+        'MAIN_CROP': { value: 'WHEAT', confidence: 1.0 }
+      },
+      debug: true
+    }
+  );
+
+  Logger.log('\nRESULTS:');
+  Logger.log('AWD-CH₄: ' + result.results['AWD-CH₄'].eligibility + ' (EXPECT: NO)');
+  Logger.log('  Reason: ' + result.results['AWD-CH₄'].reasons[0]);
+
+  const pass = result.results['AWD-CH₄'].eligibility === 'NO';
+  Logger.log('\n' + (pass ? '✅ TEST PASSED' : '❌ TEST FAILED'));
+  return result;
+}
+
+
+// ────────────────────────────────────────────────────────────────────
+// TEST 6: Test Backend Eligibility Logic (BIOCHAR User)
+// ────────────────────────────────────────────────────────────────────
+function DEBUG_TestBIOCHAR_User() {
+  Logger.log('═══ TEST: BIOCHAR - User Applying Biochar ═══');
+
+  const result = evaluateCPOS_Lite_v1(
+    { 'Soil Organic Carbon (%)': '2.5' },
+    {
+      signals: {
+        'BIOCHAR_APPLICATION': { value: 'YES', confidence: 1.0 },
+        'ERW_ROCK_TYPE': { value: 'NONE', confidence: 1.0 }
+      },
+      debug: true
+    }
+  );
+
+  Logger.log('\nRESULTS:');
+  Logger.log('BIOCHAR: ' + result.results['BIOCHAR'].eligibility + ' (EXPECT: YES)');
+  Logger.log('  Reason: ' + result.results['BIOCHAR'].reasons[0]);
+  Logger.log('ERW: ' + result.results['ERW'].eligibility + ' (EXPECT: NO)');
+
+  const pass = result.results['BIOCHAR'].eligibility === 'YES' &&
+               result.results['ERW'].eligibility === 'NO';
+
+  Logger.log('\n' + (pass ? '✅ TEST PASSED' : '❌ TEST FAILED'));
+  return result;
+}
+
+
+// ────────────────────────────────────────────────────────────────────
+// TEST 7: Test Backend Eligibility Logic (ERW User)
+// ────────────────────────────────────────────────────────────────────
+function DEBUG_TestERW_BasaltUser() {
+  Logger.log('═══ TEST: ERW - Basalt User ═══');
+
+  const result = evaluateCPOS_Lite_v1(
+    { 'Soil Organic Carbon (%)': '2.5' },
+    {
+      signals: {
+        'BIOCHAR_APPLICATION': { value: 'NO', confidence: 1.0 },
+        'ERW_ROCK_TYPE': { value: 'BASALT', confidence: 1.0 }
+      },
+      debug: true
+    }
+  );
+
+  Logger.log('\nRESULTS:');
+  Logger.log('BIOCHAR: ' + result.results['BIOCHAR'].eligibility + ' (EXPECT: NO)');
+  Logger.log('ERW: ' + result.results['ERW'].eligibility + ' (EXPECT: YES)');
+  Logger.log('  Reason: ' + result.results['ERW'].reasons[0]);
+
+  const pass = result.results['BIOCHAR'].eligibility === 'NO' &&
+               result.results['ERW'].eligibility === 'YES';
+
+  Logger.log('\n' + (pass ? '✅ TEST PASSED' : '❌ TEST FAILED'));
+  return result;
+}
+
+
+// ────────────────────────────────────────────────────────────────────
+// RUN ALL BACKEND TESTS
+// ────────────────────────────────────────────────────────────────────
+function DEBUG_RunAllBackendTests() {
+  Logger.log('╔════════════════════════════════════════════════════════════╗');
+  Logger.log('║         RUNNING ALL BACKEND DEBUG TESTS                   ║');
+  Logger.log('╚════════════════════════════════════════════════════════════╝');
+  Logger.log('');
+
+  const results = {
+    derivationRules: false,
+    routingRules: false,
+    test1_RiceFarmer: false,
+    test2_AlreadyAWD: false,
+    test3_WheatFarmer: false,
+    test4_BiocharUser: false,
+    test5_ERWUser: false
+  };
+
+  try {
+    // Test 1: Check derivation rules
+    const deriv = DEBUG_CheckDerivationRules();
+    results.derivationRules = (deriv.newRules === 21);
+    Logger.log('');
+  } catch (e) {
+    Logger.log('❌ Derivation rules check failed: ' + e);
+  }
+
+  try {
+    // Test 2: Check routing rules
+    const routing = DEBUG_CheckRoutingRules();
+    results.routingRules = (routing.newRules === 8);
+    Logger.log('');
+  } catch (e) {
+    Logger.log('❌ Routing rules check failed: ' + e);
+  }
+
+  try {
+    // Test 3: Rice farmer (AWD eligible)
+    const t1 = DEBUG_TestAWD_RiceFarmer();
+    results.test1_RiceFarmer = (t1.results['AWD-CH₄'].eligibility === 'YES');
+    Logger.log('');
+  } catch (e) {
+    Logger.log('❌ Test 1 failed: ' + e);
+  }
+
+  try {
+    // Test 4: Already practicing AWD
+    const t2 = DEBUG_TestAWD_AlreadyPracticing();
+    results.test2_AlreadyAWD = (t2.results['AWD-CH₄'].eligibility === 'NO');
+    Logger.log('');
+  } catch (e) {
+    Logger.log('❌ Test 2 failed: ' + e);
+  }
+
+  try {
+    // Test 5: Wheat farmer
+    const t3 = DEBUG_TestAWD_WheatFarmer();
+    results.test3_WheatFarmer = (t3.results['AWD-CH₄'].eligibility === 'NO');
+    Logger.log('');
+  } catch (e) {
+    Logger.log('❌ Test 3 failed: ' + e);
+  }
+
+  try {
+    // Test 6: Biochar user
+    const t4 = DEBUG_TestBIOCHAR_User();
+    results.test4_BiocharUser = (t4.results['BIOCHAR'].eligibility === 'YES');
+    Logger.log('');
+  } catch (e) {
+    Logger.log('❌ Test 4 failed: ' + e);
+  }
+
+  try {
+    // Test 7: ERW user
+    const t5 = DEBUG_TestERW_BasaltUser();
+    results.test5_ERWUser = (t5.results['ERW'].eligibility === 'YES');
+    Logger.log('');
+  } catch (e) {
+    Logger.log('❌ Test 5 failed: ' + e);
+  }
+
+  // Summary
+  Logger.log('╔════════════════════════════════════════════════════════════╗');
+  Logger.log('║                    TEST SUMMARY                            ║');
+  Logger.log('╚════════════════════════════════════════════════════════════╝');
+
+  const passed = Object.values(results).filter(v => v === true).length;
+  const total = Object.keys(results).length;
+
+  Object.keys(results).forEach(key => {
+    const status = results[key] ? '✅ PASS' : '❌ FAIL';
+    Logger.log(status + ' - ' + key);
+  });
+
+  Logger.log('');
+  Logger.log('TOTAL: ' + passed + '/' + total + ' tests passed');
+
+  if (passed === total) {
+    Logger.log('');
+    Logger.log('🎉 ALL TESTS PASSED! Backend is ready!');
+  } else {
+    Logger.log('');
+    Logger.log('⚠️  SOME TESTS FAILED. Check logs above for details.');
+  }
+
+  return results;
+}
+
+function DEBUG_TestQuestionnaireConfig() {
+  Logger.log('=== TESTING getCPOSQuestionnaireConfig ===');
+  
+  try {
+    const result = getCPOSQuestionnaireConfig();
+    
+    Logger.log('✅ Function executed successfully');
+    Logger.log('');
+    Logger.log('Result keys: ' + Object.keys(result).join(', '));
+    Logger.log('');
+    Logger.log('📊 COUNTS:');
+    Logger.log('  bank.length: ' + (result.bank?.length || 0));
+    Logger.log('  options.length: ' + (result.options?.length || 0));
+    Logger.log('  derivationRules.length: ' + (result.derivationRules?.length || 0));
+    Logger.log('  routingRules.length: ' + (result.routingRules?.length || 0));
+    Logger.log('  signalToLiteMap.length: ' + (result.signalToLiteMap?.length || 0));
+    Logger.log('');
+    
+    if (result.bank && result.bank.length > 0) {
+      Logger.log('✅ FIRST QUESTION:');
+      Logger.log(JSON.stringify(result.bank[0], null, 2));
+    } else {
+      Logger.log('❌ NO QUESTIONS FOUND!');
+      Logger.log('');
+      Logger.log('🔧 CHECK YOUR SHEET NAMES:');
+      
+      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      const allSheets = ss.getSheets().map(s => s.getName());
+      
+      Logger.log('');
+      Logger.log('📋 ALL SHEETS IN SPREADSHEET:');
+      allSheets.forEach(name => Logger.log('  - ' + name));
+      
+      Logger.log('');
+      Logger.log('✅ REQUIRED SHEET NAMES:');
+      Logger.log('  - CPOS_Q_Bank');
+      Logger.log('  - CPOS_Q_Options');
+      Logger.log('  - CPOS_Q_DerivationRules');
+      Logger.log('  - CPOS_Q_RoutingRules');
+      Logger.log('  - CPOS_Q_SignaltoLiteFactorMap');
+    }
+    
+  } catch (error) {
+    Logger.log('❌ ERROR: ' + error.message);
+    Logger.log('Stack: ' + error.stack);
+  }
+}
+
+function DEBUG_CheckNormalizeExists() {
+  Logger.log('=== CHECKING IF NORMALIZE FUNCTION EXISTS ===');
+  
+  try {
+    // Try to call the function with dummy data
+    const testData = [
+      { Question_ID: 'TEST', Question_Text_EN: 'Test Question' }
+    ];
+    
+    const result = normalizeQuestionnaireFields(testData);
+    
+    Logger.log('✅ Function exists and executed!');
+    Logger.log('');
+    Logger.log('Input:');
+    Logger.log(JSON.stringify(testData[0], null, 2));
+    Logger.log('');
+    Logger.log('Output:');
+    Logger.log(JSON.stringify(result[0], null, 2));
+    
+    if (result[0].QuestionID) {
+      Logger.log('');
+      Logger.log('✅ Normalization is working!');
+      Logger.log('   Question_ID → QuestionID ✓');
+    } else {
+      Logger.log('');
+      Logger.log('❌ Normalization NOT working!');
+      Logger.log('   Output still has: ' + Object.keys(result[0]).join(', '));
+    }
+    
+  } catch (error) {
+    Logger.log('❌ ERROR: Function does not exist or has error!');
+    Logger.log('   ' + error.message);
+    Logger.log('');
+    Logger.log('🔧 FIX: Add the normalizeQuestionnaireFields() function');
+    Logger.log('   Make sure it is ABOVE getCPOSQuestionnaireConfig() in your Code.gs');
+  }
+}
+
+
+function DEBUG_TestActualReturn() {
+  Logger.log('=== TESTING ACTUAL RETURN VALUES ===');
+  
+  const result = getCPOSQuestionnaireConfig();
+  
+  if (!result.bank || result.bank.length === 0) {
+    Logger.log('❌ No questions returned!');
+    return;
+  }
+  
+  const firstQ = result.bank[0];
+  
+  Logger.log('📋 FIELD CHECK:');
+  Logger.log('');
+  Logger.log('Has QuestionID (normalized)?', !!firstQ.QuestionID);
+  Logger.log('Has Question_ID (old)?', !!firstQ.Question_ID);
+  Logger.log('');
+  
+  if (firstQ.QuestionID) {
+    Logger.log('✅ FIELDS ARE NORMALIZED!');
+    Logger.log('   QuestionID: ' + firstQ.QuestionID);
+    Logger.log('   QuestionTextEN: ' + firstQ.QuestionTextEN);
+  } else if (firstQ.Question_ID) {
+    Logger.log('❌ FIELDS NOT NORMALIZED!');
+    Logger.log('   Still has: Question_ID = ' + firstQ.Question_ID);
+    Logger.log('');
+    Logger.log('This means normalizeQuestionnaireFields() is NOT being called in getCPOSQuestionnaireConfig()');
+  }
+  
+  Logger.log('');
+  Logger.log('All keys in first question:');
+  Object.keys(firstQ).forEach(k => Logger.log('  - ' + k));
+}
+
+
+function FINAL_TEST_DETAILED() {
+  Logger.log('=== DETAILED FINAL TEST ===');
+  Logger.log('');
+  
+  const result = getCPOSQuestionnaireConfig();
+  
+  Logger.log('Result structure:');
+  Logger.log('  result.ok: ' + result.ok);
+  Logger.log('  result.bank length: ' + (result.bank ? result.bank.length : 0));
+  Logger.log('');
+  
+  if (!result.bank || result.bank.length === 0) {
+    Logger.log('❌ No questions in bank!');
+    return;
+  }
+  
+  const firstQ = result.bank[0];
+  
+  Logger.log('First question object:');
+  Logger.log(JSON.stringify(firstQ, null, 2));
+  Logger.log('');
+  
+  Logger.log('Field check:');
+  Logger.log('  typeof firstQ.QuestionID: ' + typeof firstQ.QuestionID);
+  Logger.log('  firstQ.QuestionID value: "' + firstQ.QuestionID + '"');
+  Logger.log('  firstQ.QuestionID length: ' + (firstQ.QuestionID ? firstQ.QuestionID.length : 0));
+  Logger.log('');
+  Logger.log('  typeof firstQ.Question_ID: ' + typeof firstQ.Question_ID);
+  Logger.log('  firstQ.Question_ID value: "' + (firstQ.Question_ID || 'undefined') + '"');
+  Logger.log('');
+  
+  const hasNormalized = !!firstQ.QuestionID;
+  const hasOld = !!firstQ.Question_ID;
+  
+  if (hasNormalized && !hasOld) {
+    Logger.log('✅✅✅ PERFECT! Normalization working! ✅✅✅');
+    Logger.log('');
+    Logger.log('🎯 Next step: Reload your frontend');
+    Logger.log('   Expected: Status pill shows QBank=' + result.bank.length);
+  } else if (hasOld && !hasNormalized) {
+    Logger.log('❌ Normalization NOT working - still has snake_case');
+  } else if (hasNormalized && hasOld) {
+    Logger.log('⚠️  Both field names present (old and new)');
+  } else {
+    Logger.log('❌ Neither field name present - data corrupted?');
+  }
+}
