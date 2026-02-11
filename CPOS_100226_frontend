@@ -736,11 +736,11 @@
 
         <!-- Right -->
         <div class="card">
-        <div class="cardHeader">
-          <h3 class="h2">Explainability</h3>
-          <div class="hint">Weights &times desirability + Pathway_context</div>
-        </div>
-        <div class="cardBody">
+          <div class="cardHeader">
+            <h3 class="h2">Explainability</h3>
+            <div class="hint">Weights &times desirability + Pathway_context</div>
+          </div>
+          <div class="cardBody">
 
             <div id="notesBox" class="mutedBox">
               Enter values to view class, desirability, and pathway context here.
@@ -933,6 +933,8 @@
       return (s === 'true' || s === '1' || s === 'yes' || s === 'y');
     }
 
+    
+
     function normKey_(s) {
       return String(s ?? '')
         .normalize('NFKC')
@@ -979,6 +981,7 @@
       computed: {},
       lastResults: null,
       q: {
+      available: false,
         bank: [],
         options: [],
         derivationRules: [],
@@ -1656,6 +1659,25 @@ const CONSISTENCY_RULES = [
       });
     }
 
+    function getQField_(row, candidates) {
+      if (!row || typeof row !== 'object') return '';
+      for (const c of candidates) {
+        if (row[c] !== undefined && row[c] !== null && String(row[c]).trim() !== '') {
+          return row[c];
+        }
+      }
+      const normalized = {};
+      Object.keys(row).forEach(k => {
+        normalized[String(k || '').toLowerCase().replace(/[^a-z0-9]/g, '')] = row[k];
+      });
+      for (const c of candidates) {
+        const key = String(c || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const v = normalized[key];
+        if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+      }
+      return '';
+    }
+
     // ---------------------------
     // Build indexes from 3 sheets
     // ---------------------------
@@ -1755,8 +1777,17 @@ const CONSISTENCY_RULES = [
     // ---------------------------
     // Questionnaire indexes
     // ---------------------------
-    function buildQuestionnaireIndexes_() {
+function buildQuestionnaireIndexes_() {
+  if (!CPOSL.q) CPOSL.q = {};
+  if (!CPOSL.q.idx) CPOSL.q.idx = {};
+  if (!CPOSL.qState) CPOSL.qState = { mode: 'BASIC' };
+  if (!CPOSL.qState.mode) CPOSL.qState.mode = 'BASIC';
+  if (!CPOSL.qState.answered) CPOSL.qState.answered = {};
+
+
   const idx = CPOSL.q.idx;
+
+  // Reset indexes (NAMES MUST MATCH ENGINE READERS)
   idx.qBankById = new Map();
   idx.qOptionsByQ = new Map();
   idx.qDerivByWhenQ = new Map();
@@ -1766,76 +1797,119 @@ const CONSISTENCY_RULES = [
 
   const bank = Array.isArray(CPOSL.q.bank) ? CPOSL.q.bank : [];
   const options = Array.isArray(CPOSL.q.options) ? CPOSL.q.options : [];
-  const derivs = Array.isArray(CPOSL.q.derivationRules) ? CPOSL.q.derivationRules : [];
+  const deriv = Array.isArray(CPOSL.q.derivationRules) ? CPOSL.q.derivationRules : [];
   const routes = Array.isArray(CPOSL.q.routingRules) ? CPOSL.q.routingRules : [];
-  const maps = Array.isArray(CPOSL.q.signalToLiteMap) ? CPOSL.q.signalToLiteMap : [];
+  const signalMaps = Array.isArray(CPOSL.q.signalToLiteMap) ? CPOSL.q.signalToLiteMap : [];
 
-  // ✅ UPDATED: Try PascalCase first, fallback to snake_case
-  bank.forEach(r => {
-    const id = String(r.QuestionID || r.Question_ID || '').trim();
-    if (!id) return;
-    idx.qBankById.set(id, r);
-  });
-
-  options.forEach(r => {
-    const qid = String(r.QuestionID || r.Question_ID || '').trim();
-    if (!qid) return;
-    if (!idx.qOptionsByQ.has(qid)) idx.qOptionsByQ.set(qid, []);
-    idx.qOptionsByQ.get(qid).push(r);
-  });
-
-  for (const arr of idx.qOptionsByQ.values()) {
-    arr.sort((a, b) => (toNum(a.OptionOrder || a.Option_Order) ?? 9999) - (toNum(b.OptionOrder || b.Option_Order) ?? 9999));
-  }
-
-  derivs.forEach(r => {
-    const qid = String(r.WhenQuestionID || r.When_Question_ID || '').trim();
-    if (!qid) return;
-    if (!idx.qDerivByWhenQ.has(qid)) idx.qDerivByWhenQ.set(qid, []);
-    idx.qDerivByWhenQ.get(qid).push(r);
-  });
-
-  for (const arr of idx.qDerivByWhenQ.values()) {
-    arr.sort((a, b) => (toNum(a.Priority) ?? 9999) - (toNum(b.Priority) ?? 9999));
-  }
-
-  routes.forEach(r => {
-    const qid = String(r.CurrentQuestionID || r.Current_Question_ID || '').trim();
-    if (!qid) return;
-    if (!idx.qRoutesByCurrentQ.has(qid)) idx.qRoutesByCurrentQ.set(qid, []);
-    idx.qRoutesByCurrentQ.get(qid).push(r);
-  });
-
-  for (const arr of idx.qRoutesByCurrentQ.values()) {
-    arr.sort((a, b) => (toNum(a.Priority) ?? 9999) - (toNum(b.Priority) ?? 9999));
-  }
-
-  maps.forEach(r => {
-    if (!toBool(r.IsActive || r.Is_Active)) return;
-    const key = String(r.SignalKey || r.Signal_Key || '').trim();
-    if (!key) return;
-    if (!idx.qSignalMapByKey.has(key)) idx.qSignalMapByKey.set(key, []);
-    idx.qSignalMapByKey.get(key).push(r);
-  });
-
-  const activeBank = bank.filter(r => toBool(r.IsActive || r.Is_Active));
-  const modeBank = activeBank.filter(r => {
-    const mode = String(r.Mode || '').trim();
-    return !mode || mode.toUpperCase() === CPOSL.qState.mode.toUpperCase();
-  });
-
-  const startByGroup = modeBank.filter(r => String(r.GroupCode || r.Group_Code || '').trim().toUpperCase() === 'START');
-  if (startByGroup.length) {
-    idx.startQuestions = startByGroup.map(r => String(r.QuestionID || r.Question_ID || '').trim()).filter(Boolean);
-  } else {
-    const sequences = modeBank.map(r => toNum(r.Sequence)).filter(v => v !== null);
-    const minSeq = sequences.length ? Math.min.apply(null, sequences) : null;
-    if (minSeq !== null) {
-      idx.startQuestions = modeBank.filter(r => toNum(r.Sequence) === minSeq).map(r => String(r.QuestionID || r.Question_ID || '').trim()).filter(Boolean);
-    } else if (modeBank.length) {
-      const sorted = modeBank.slice().sort((a, b) => (toNum(a.Sequence) ?? 9999) - (toNum(b.Sequence) ?? 9999));
-      idx.startQuestions = [String(sorted[0].QuestionID || sorted[0].Question_ID || '').trim()].filter(Boolean);
+  // Helper to read a field from row allowing multiple key variants
+  const get = (row, keys, fallback = '') => {
+    if (!row) return fallback;
+    for (const k of keys) {
+      if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '') return row[k];
     }
+    // Also allow normalized matching
+    const normalized = {};
+    Object.keys(row).forEach(k => {
+      normalized[String(k || '').toLowerCase().replace(/[^a-z0-9]/g, '')] = row[k];
+    });
+    for (const k of keys) {
+      const nk = String(k || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (normalized[nk] !== undefined && normalized[nk] !== null && String(normalized[nk]).trim() !== '') return normalized[nk];
+    }
+    return fallback;
+  };
+
+  const boolVal = (v) => {
+    if (typeof v === 'boolean') return v;
+    const s = String(v ?? '').trim().toLowerCase();
+    return (s === 'true' || s === '1' || s === 'yes' || s === 'y');
+  };
+
+  const normStr = (v) => String(v ?? '').trim();
+  const normUp = (v) => normStr(v).toUpperCase();
+
+  // ---- 1) Bank: qBankById + compute startQuestions (per mode) ----
+  const rowsByMode = new Map(); // mode -> array of rows (active)
+
+  for (const r of bank) {
+    const qid = normStr(get(r, ['Question_ID','QuestionID','Question_Id','question_id','questionId'], ''));
+    if (!qid) continue;
+
+    const active = boolVal(get(r, ['Is_Active','IsActive','is_active','Active','active'], true));
+if (!active) continue;
+
+const mode  = normUp(get(r, ['Mode','mode'], 'BASIC')) || 'BASIC';
+const group = normUp(get(r, ['Group_Code','GroupCode','group_code','Group','group'], ''));
+const seqRaw = get(r, ['Sequence','sequence','Seq','seq'], '');
+const seqNum = (seqRaw === '' || seqRaw === null || seqRaw === undefined) ? Number.POSITIVE_INFINITY : Number(seqRaw);
+const seq = Number.isFinite(seqNum) ? seqNum : Number.POSITIVE_INFINITY;
+
+const req = boolVal(get(r, ['Is_Required','IsRequired','is_required','Required','required'], false));
+
+// ✅ CANONICALIZE (so downstream code can safely read fixed keys)
+r.Question_ID = qid;
+r.Is_Active   = active;
+r.Mode        = mode;
+r.Group_Code  = group;
+r.Sequence    = (seq === Number.POSITIVE_INFINITY) ? '' : seq;   // keep blank if missing
+r.Is_Required = req;
+
+r.__qid = qid;
+r.__mode = mode;
+r.__group = group;
+r.__seq = seq;
+
+
+    idx.qBankById.set(qid, r);
+
+    if (!rowsByMode.has(mode)) rowsByMode.set(mode, []);
+    rowsByMode.get(mode).push(r);
+  }
+
+  const curMode = normUp(CPOSL.qState.mode || 'BASIC');
+  const modeRows = rowsByMode.get(curMode) || [];
+
+  // Preferred: explicit START group else min sequence
+  const explicitStarts = modeRows.filter(r => r.__group === 'START');
+  if (explicitStarts.length > 0) {
+    explicitStarts.sort((a, b) => a.__seq - b.__seq);
+    idx.startQuestions = explicitStarts.map(r => r.__qid);
+  } else if (modeRows.length > 0) {
+    modeRows.sort((a, b) => a.__seq - b.__seq);
+    const minSeq = modeRows[0].__seq;
+    idx.startQuestions = modeRows.filter(r => r.__seq === minSeq).map(r => r.__qid);
+  }
+
+  // ---- 2) Options: group by Question_ID ----
+  for (const o of options) {
+    const qid = normStr(get(o, ['Question_ID','QuestionID','Question_Id','question_id','questionId'], ''));
+    if (!qid) continue;
+    if (!idx.qOptionsByQ.has(qid)) idx.qOptionsByQ.set(qid, []);
+    idx.qOptionsByQ.get(qid).push(o);
+  }
+
+  // ---- 3) Derivation rules: MUST group by WHEN question (the question you just answered) ----
+  for (const d of deriv) {
+    const whenQ = normStr(get(d, ['When_Question_ID','WhenQuestionID','When_QID','Question_ID','When'], ''));
+    if (!whenQ) continue;
+    if (!idx.qDerivByWhenQ.has(whenQ)) idx.qDerivByWhenQ.set(whenQ, []);
+    idx.qDerivByWhenQ.get(whenQ).push(d);
+  }
+
+  // ---- 4) Routing rules: group by CURRENT/FROM question ----
+  for (const rr of routes) {
+    const fromQ = normStr(get(rr, ['From_Question_ID','FromQuestionID','From_QID','Current_Question_ID','CurrentQuestionID','From'], ''));
+    if (!fromQ) continue;
+    if (!idx.qRoutesByCurrentQ.has(fromQ)) idx.qRoutesByCurrentQ.set(fromQ, []);
+    idx.qRoutesByCurrentQ.get(fromQ).push(rr);
+  }
+
+  // ---- 5) Signal → Lite map: group by Signal_Key (your code uses Signal_Key) ----
+  for (const sm of signalMaps) {
+    const sig = normStr(get(sm, ['Signal_Key','Signal','Signal_Code','SignalCode','signal','signal_code'], ''));
+    if (!sig) continue;
+    if (!idx.qSignalMapByKey.has(sig)) idx.qSignalMapByKey.set(sig, []);
+    idx.qSignalMapByKey.get(sig).push(sm);
   }
 
   console.log('[CPOS][Q] indexes built', {
@@ -1844,9 +1918,21 @@ const CONSISTENCY_RULES = [
     deriv: idx.qDerivByWhenQ.size,
     routes: idx.qRoutesByCurrentQ.size,
     signalMaps: idx.qSignalMapByKey.size,
-    starts: idx.startQuestions.length
+    startCount: idx.startQuestions.length,
+    mode: curMode,
+    startSample: idx.startQuestions.slice(0, 3)
   });
+    
+  // ✅ Mark questionnaire data as usable for UI gating
+  if (!CPOSL.q) CPOSL.q = {};
+  CPOSL.q.available = (idx.qBankById.size > 0 && idx.startQuestions.length > 0);
+
+  console.log('[DBG] startQuestions:', idx.startQuestions);
+  console.log('[DBG] firstStartRow:', idx.startQuestions[0] ? idx.qBankById.get(idx.startQuestions[0]) : null);
+
 }
+
+
 
 
 
@@ -1905,7 +1991,7 @@ function findNextSequentialQuestion_(currentQid) {
   if (currentSeq === null) return null;
 
   const activeQuestions = Array.from(CPOSL.q.idx.qBankById.values()).filter(q => {
-    if (!toBool(q.Is_Active)) return false;
+if (q.Is_Active !== true) return false;
     const qMode = String(q.Mode || '').trim().toUpperCase();
     const currentMode = CPOSL.qState.mode.toUpperCase();
     return !qMode || qMode === currentMode;
@@ -1917,7 +2003,7 @@ function findNextSequentialQuestion_(currentQid) {
   for (const q of activeQuestions) {
     const qSeq = toNum(q.Sequence);
     const qid = String(q.Question_ID || '').trim();
-    const isRequired = toBool(q.Is_Required);
+const isRequired = (q.Is_Required === true);
     
     if (qSeq > currentSeq && !CPOSL.qState.answered[qid] && qid !== currentQid) {
       // Only auto-add if Is_Required=TRUE
@@ -1935,172 +2021,249 @@ function findNextSequentialQuestion_(currentQid) {
     // QUESTIONNAIRE ENGINE
     // ---------------------------
 function renderQuestionUI_() {
-  const qid = CPOSL.qState.current;
+  const qid = CPOSL?.qState?.current;
+
+  const elQ = document.getElementById('qQuestionText');
+  const elH = document.getElementById('qHelpText');
+  const elA = document.getElementById('qAnswerBox');
+
+  if (!elQ || !elH || !elA) {
+    console.warn('[Q] Missing UI elements (qQuestionText/qHelpText/qAnswerBox).');
+    return;
+  }
+
+  // Ensure answered object exists (prevents edge-case freezes)
+  if (!CPOSL.qState) CPOSL.qState = {};
+  if (!CPOSL.qState.answered) CPOSL.qState.answered = {};
+
+  // 0) No current Q
   if (!qid) {
-    document.getElementById('qQuestionText').textContent = 'No current question.';
-    document.getElementById('qHelpText').textContent = '';
-    document.getElementById('qAnswerBox').innerHTML = '';
+    elQ.textContent = 'No current question.';
+    elH.textContent = '';
+    elA.innerHTML = '';
     return;
   }
 
-  const qRow = CPOSL.q.idx.qBankById.get(qid);
+  // ✅ 1) PROBE questions must short-circuit BEFORE qBank lookup
+  if (String(qid).startsWith('PROBE_')) {
+    // Your probe renderer should fully render qQuestionText/qHelpText/qAnswerBox
+    // Pass qid so probe UI can use it (safe even if your function ignores it)
+    try {
+      renderProbeQuestion(qid);
+    } catch (e) {
+      console.error('[Q] renderProbeQuestion error:', e);
+      elQ.textContent = `Probe ${qid} render error.`;
+      elH.textContent = '';
+      elA.innerHTML = '';
+    }
+    return;
+  }
+
+  // 2) Normal questions from bank
+  const qRow = CPOSL?.q?.idx?.qBankById?.get(qid);
   if (!qRow) {
-    document.getElementById('qQuestionText').textContent = `Question ${qid} not found.`;
-    document.getElementById('qHelpText').textContent = '';
-    document.getElementById('qAnswerBox').innerHTML = '';
+    elQ.textContent = `Question ${qid} not found.`;
+    elH.textContent = '';
+    elA.innerHTML = '';
     return;
   }
 
-    // 🆕 ADD THESE 3 LINES
-  if (qid.startsWith('PROBE_')) {
-    renderProbeQuestion();
-    return;
-  }
+  // Language
+  const lang = (CPOSL.language || 'EN').toUpperCase();
 
-const lang = CPOSL.language || "EN";
+  // Question text + help text (HI preferred if present)
+  const questionText =
+    (lang === 'HI' && String(qRow.Question_Text_HI || '').trim())
+      ? String(qRow.Question_Text_HI).trim()
+      : String(qRow.Question_Text || qRow.Question_Text_EN || qid).trim();
 
+  const helpText =
+    (lang === 'HI' && String(qRow.Help_Text_HI || '').trim())
+      ? String(qRow.Help_Text_HI).trim()
+      : String(qRow.Help_Text || qRow.Help_Text_EN || '').trim();
 
-  // ✅ NEW: Get text based on selected language
-const questionText = lang === "HI" && qRow.Question_Text_HI 
-    ? String(qRow.Question_Text_HI).trim() 
-    : String(qRow.Question_Text_EN || qid).trim();
+  elQ.textContent = questionText;
+  elH.textContent = helpText;
 
-const helpText = lang === "HI" && qRow.Help_Text_HI 
-    ? String(qRow.Help_Text_HI).trim() 
-    : String(qRow.Help_Text_EN || '').trim();
+  // Answer box reset
+  elA.innerHTML = '';
 
-  
-  const qType = String(qRow.Answer_Type || '').trim().toLowerCase();
-  const opts = CPOSL.q.idx.qOptionsByQ.get(qid) || [];
-
-  document.getElementById('qQuestionText').textContent = questionText;
-  document.getElementById('qHelpText').textContent = helpText;
-
-  const answerBox = document.getElementById('qAnswerBox');
-  answerBox.innerHTML = '';
-
+  // Previous answer
   const prevAnswer = CPOSL.qState.answered[qid];
-  const prevRaw = prevAnswer ? prevAnswer.Answer_Raw : '';
+  const prevRaw = prevAnswer ? (prevAnswer.Answer_Raw ?? '') : '';
+
+  // Resolve type
+  const qType = String(qRow.Answer_Type || '').trim().toLowerCase();
+  const opts = CPOSL?.q?.idx?.qOptionsByQ?.get(qid) || [];
 
   let actualType = qType;
-  
-  if (!actualType) {
-    actualType = opts.length ? 'single_select' : 'text';
-  }
+  if (!actualType) actualType = opts.length ? 'single_select' : 'text';
 
   if (actualType === 'single_select' && opts.length === 0) {
     console.warn(`[Q] ${qid} is single_select but has no options. Falling back to text input.`);
     actualType = 'text';
   }
-  
   if (actualType === 'multi_select' && opts.length === 0) {
     console.warn(`[Q] ${qid} is multi_select but has no options. Falling back to textarea.`);
     actualType = 'text_multi';
   }
 
- if (actualType === 'single_select') {
-  opts.forEach(opt => {
-    const code = String(opt.Option_Code || '').trim();
-    const label = lang === 'HI' && opt.Option_Label_HI 
-      ? String(opt.Option_Label_HI).trim() 
-      : String(opt.Option_Label || code).trim();
-    const checked = (prevRaw === code) ? 'checked' : '';
-    const radioId = `q_${qid}_${code}`.replace(/[^a-zA-Z0-9_]/g, '_');
-    const div = document.createElement('div');
-    div.style.cssText = 'display:grid;grid-template-columns:30px 1fr;gap:20px;align-items:center;margin-bottom:10px';
-    div.innerHTML = `
-      <input type="radio" name="q_${qid}" value="${escapeHtml(code)}" id="${radioId}" ${checked} style="margin:0;cursor:pointer">
-      <label for="${radioId}" style="margin:0;cursor:pointer;text-align:left;line-height:1.5">${escapeHtml(label)}</label>
-    `;
+  // Helper: option label with correct columns
+  const getOptLabel = (opt, code) => {
+    const hi = String(opt?.Option_Label_HI || '').trim();
+    const en = String(opt?.Option_Label_EN || opt?.Option_Label || '').trim();
+    if (lang === 'HI' && hi) return hi;
+    if (en) return en;
+    return code;
+  };
 
+  // Render
+  if (actualType === 'single_select') {
+    opts.forEach(opt => {
+      const code = String(opt.Option_Code || '').trim();
+      if (!code) return;
 
-      answerBox.appendChild(div);
-      
+      const label = getOptLabel(opt, code);
+      const checked = (String(prevRaw || '').trim() === code) ? 'checked' : '';
+      const radioId = `q_${qid}_${code}`.replace(/[^a-zA-Z0-9_]/g, '_');
+
+      const div = document.createElement('div');
+      div.style.cssText =
+        'display:grid;grid-template-columns:30px 1fr;gap:20px;align-items:center;margin-bottom:10px';
+
+      div.innerHTML = `
+        <input type="radio"
+               name="q_${escapeHtml(String(qid))}"
+               value="${escapeHtml(code)}"
+               id="${radioId}"
+               ${checked}
+               style="margin:0;cursor:pointer">
+        <label for="${radioId}"
+               style="margin:0;cursor:pointer;text-align:left;line-height:1.5">
+          ${escapeHtml(label)}
+        </label>
+      `;
+
+      elA.appendChild(div);
+
       const radio = div.querySelector('input');
-      radio.addEventListener('change', () => {
-        updateQuestionnaireUIState_();
-      });
+      if (radio) {
+        radio.addEventListener('change', () => {
+          updateQuestionnaireUIState_();
+        });
+      }
     });
-  } 
-else if (actualType === 'multi_select') {
-  opts.forEach(opt => {
-    const code = String(opt.Option_Code || '').trim();
-    const label = lang === 'HI' && opt.Option_Label_HI 
-      ? String(opt.Option_Label_HI).trim() 
-      : String(opt.Option_Label || code).trim();
-    const prevCodes = prevRaw ? prevRaw.split(',').map(x => x.trim()) : [];
-    const checked = prevCodes.includes(code) ? 'checked' : '';
-    const cbId = `q_${qid}_${code}`.replace(/[^a-zA-Z0-9_]/g, '_');
-    const div = document.createElement('div');
-    div.style.cssText = 'display:grid;grid-template-columns:30px 1fr;gap:20px;align-items:center;margin-bottom:10px';
-    div.innerHTML = `
-      <input type="checkbox" name="q_${qid}" value="${escapeHtml(code)}" id="${cbId}" ${checked} style="margin:0;cursor:pointer">
-      <label for="${cbId}" style="margin:0;cursor:pointer;text-align:left;line-height:1.5">${escapeHtml(label)}</label>
-    `;
 
+  } else if (actualType === 'multi_select') {
+    opts.forEach(opt => {
+      const code = String(opt.Option_Code || '').trim();
+      if (!code) return;
 
-      answerBox.appendChild(div);
-      
+      const label = getOptLabel(opt, code);
+
+      const prevCodes = String(prevRaw || '')
+        .split(',')
+        .map(x => x.trim())
+        .filter(Boolean);
+
+      const checked = prevCodes.includes(code) ? 'checked' : '';
+      const cbId = `q_${qid}_${code}`.replace(/[^a-zA-Z0-9_]/g, '_');
+
+      const div = document.createElement('div');
+      div.style.cssText =
+        'display:grid;grid-template-columns:30px 1fr;gap:20px;align-items:center;margin-bottom:10px';
+
+      div.innerHTML = `
+        <input type="checkbox"
+               name="q_${escapeHtml(String(qid))}"
+               value="${escapeHtml(code)}"
+               id="${cbId}"
+               ${checked}
+               style="margin:0;cursor:pointer">
+        <label for="${cbId}"
+               style="margin:0;cursor:pointer;text-align:left;line-height:1.5">
+          ${escapeHtml(label)}
+        </label>
+      `;
+
+      elA.appendChild(div);
+
       const cb = div.querySelector('input');
-      cb.addEventListener('change', () => {
-        updateQuestionnaireUIState_();
-      });
+      if (cb) {
+        cb.addEventListener('change', () => {
+          updateQuestionnaireUIState_();
+        });
+      }
     });
-  } 
-  else if (actualType === 'number' || actualType === 'rating_1_5') {
+
+  } else if (actualType === 'number' || actualType === 'rating_1_5') {
     const inp = document.createElement('input');
     inp.type = 'number';
     inp.id = `q_${qid}_num`;
-    // ✅ NEW: Localized placeholder
-    const placeholder = lang === 'HI' 
-      ? (actualType === 'rating_1_5' ? '1-5 दर्ज करें' : 'संख्यात्मक मान दर्ज करें')
-      : (actualType === 'rating_1_5' ? 'Enter 1-5' : 'Enter numeric value');
+
+    const placeholder =
+      (lang === 'HI')
+        ? (actualType === 'rating_1_5' ? '1-5 दर्ज करें' : 'संख्यात्मक मान दर्ज करें')
+        : (actualType === 'rating_1_5' ? 'Enter 1-5' : 'Enter numeric value');
+
     inp.placeholder = placeholder;
+
     if (actualType === 'rating_1_5') {
       inp.min = '1';
       inp.max = '5';
       inp.step = '1';
     }
-    inp.value = prevRaw;
-    inp.style.cssText = 'width:100%;border-radius:12px;border:1px solid var(--stroke2);background:rgba(255,255,255,0.95);color:var(--text);padding:10px;font-size:13px';
-    answerBox.appendChild(inp);
-    
+
+    inp.value = String(prevRaw || '');
+    inp.style.cssText =
+      'width:100%;border-radius:12px;border:1px solid var(--stroke2);background:rgba(255,255,255,0.95);color:var(--text);padding:10px;font-size:13px';
+
+    elA.appendChild(inp);
+
     inp.addEventListener('input', () => {
       updateQuestionnaireUIState_();
     });
-  } 
-  else if (actualType === 'text_multi') {
+
+  } else if (actualType === 'text_multi') {
     const inp = document.createElement('textarea');
     inp.id = `q_${qid}_text`;
-    // ✅ NEW: Localized placeholder
-    const placeholder = lang === 'HI' 
-      ? 'अपना उत्तर दर्ज करें (कॉमा से अलग करें)'
-      : 'Enter your answer (multiple items separated by commas)';
+
+    const placeholder =
+      (lang === 'HI')
+        ? 'अपना उत्तर दर्ज करें (कॉमा से अलग करें)'
+        : 'Enter your answer (multiple items separated by commas)';
+
     inp.placeholder = placeholder;
-    inp.value = prevRaw;
-    inp.style.cssText = 'width:100%;border-radius:12px;border:1px solid var(--stroke2);background:rgba(255,255,255,0.95);color:var(--text);padding:10px;font-size:13px;min-height:80px;resize:vertical';
-    answerBox.appendChild(inp);
-    
+    inp.value = String(prevRaw || '');
+    inp.style.cssText =
+      'width:100%;border-radius:12px;border:1px solid var(--stroke2);background:rgba(255,255,255,0.95);color:var(--text);padding:10px;font-size:13px;min-height:80px;resize:vertical';
+
+    elA.appendChild(inp);
+
     inp.addEventListener('input', () => {
       updateQuestionnaireUIState_();
     });
-  } 
-  else {
+
+  } else {
     const inp = document.createElement('input');
     inp.type = 'text';
     inp.id = `q_${qid}_text`;
-    // ✅ NEW: Localized placeholder
-    const placeholder = lang === 'HI' ? 'अपना उत्तर दर्ज करें' : 'Enter your answer';
+
+    const placeholder = (lang === 'HI') ? 'अपना उत्तर दर्ज करें' : 'Enter your answer';
     inp.placeholder = placeholder;
-    inp.value = prevRaw;
-    inp.style.cssText = 'width:100%;border-radius:12px;border:1px solid var(--stroke2);background:rgba(255,255,255,0.95);color:var(--text);padding:10px;font-size:13px';
-    answerBox.appendChild(inp);
-    
+
+    inp.value = String(prevRaw || '');
+    inp.style.cssText =
+      'width:100%;border-radius:12px;border:1px solid var(--stroke2);background:rgba(255,255,255,0.95);color:var(--text);padding:10px;font-size:13px';
+
+    elA.appendChild(inp);
+
     inp.addEventListener('input', () => {
       updateQuestionnaireUIState_();
     });
   }
 }
+
 
 
 function readAnswerFromUI_() {
@@ -2666,170 +2829,318 @@ function rebuildSignalsFromAllAnswers_() {
  * This enables pathway scoring by translating questionnaire data into model inputs
  */
 function applyEstimationMappings_() {
-  const maps = CPOSL.q.idx.qSignalMapByKey;
-  
-  if (!maps || maps.size === 0) {
+  const maps = CPOSL?.q?.idx?.qSignalMapByKey;
+
+  if (!maps || (maps.size !== undefined && maps.size === 0)) {
     console.warn('[Mapping] No signal-to-lite mappings defined. Skipping estimation.');
     return;
   }
-  
-  let mappedCount = 0;
-  
-  // Iterate through all active signal mappings
-  for (const [signalKey, mapRules] of maps.entries()) {
-    const signal = CPOSL.qState.signals[signalKey];
-    
-    if (!signal || !signal.value) {
-      continue; // No signal data to map
+
+  // ---------- helpers ----------
+  const hasValue = (v) => v !== null && v !== undefined && String(v).trim() !== '';
+  const up = (v) => String(v ?? '').trim().toUpperCase();
+
+  const toNumSafe = (v) => {
+    if (v === null || v === undefined) return null;
+    const s = String(v).trim();
+    if (!s) return null;
+    const n = Number(s.replace(/,/g, ''));
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const norm = (s) => String(s ?? '').trim().toLowerCase();
+
+  const toBool = (v, defaultVal = false) => {
+    if (v === null || v === undefined || v === '') return !!defaultVal;
+    const s = String(v).trim().toLowerCase();
+    if (['true','t','1','yes','y'].includes(s)) return true;
+    if (['false','f','0','no','n'].includes(s)) return false;
+    return !!defaultVal;
+  };
+
+  // boundsByVar can be Map or Object; your bounds sheet uses Variable_Name
+  const getVarData = (liteVarName) => {
+    const key = (typeof normKey === 'function') ? normKey(liteVarName) : norm(liteVarName);
+    const store = CPOSL?.idx?.boundsByVar;
+    if (!store) return null;
+
+    if (typeof store.get === 'function') {
+      return store.get(key) || store.get(liteVarName) || null;
     }
-    
+    if (typeof store === 'object') {
+      return store[key] || store[liteVarName] || null;
+    }
+    return null;
+  };
+
+  const getClasses = (varData) => {
+    if (!varData) return null;
+    // accept either varData.classes or varData.Classes etc.
+    if (Array.isArray(varData.classes)) return varData.classes;
+    if (Array.isArray(varData.Classes)) return varData.Classes;
+    return null;
+  };
+
+  // Your Bounds columns: Lower_Bound / Upper_Bound / Lower_Inclusive / Upper_Inclusive / Class_Label
+  const matchClassLabel = (x, varData) => {
+    const classes = getClasses(varData);
+    if (!classes || !classes.length) return null;
+
+    for (const cls of classes) {
+      const lower = (toNumSafe(cls.Lower_Bound) ?? -Infinity);
+      const upper = (toNumSafe(cls.Upper_Bound) ?? Infinity);
+      const lowerInc = toBool(cls.Lower_Inclusive, true);
+      const upperInc = toBool(cls.Upper_Inclusive, true);
+
+      const okLower = lowerInc ? (x >= lower) : (x > lower);
+      const okUpper = upperInc ? (x <= upper) : (x < upper);
+
+      if (okLower && okUpper) return String(cls.Class_Label ?? '').trim() || null;
+    }
+    return null;
+  };
+
+  // Safe math evaluator for ESTIMATE formulas (numbers, + - * / parentheses, variables)
+  const evalSafeMath = (expr, vars) => {
+    const raw = String(expr ?? '').trim();
+    if (!raw) return null;
+    if (!/^[0-9A-Za-z_+\-*/().,\s]+$/.test(raw)) return null;
+
+    const tokens = raw.match(/[A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?|[()+\-*/]/g);
+    if (!tokens) return null;
+
+    const prec = { '+': 1, '-': 1, '*': 2, '/': 2 };
+    const isOp = (t) => ['+','-','*','/'].includes(t);
+
+    // unary minus handling
+    const t2 = [];
+    for (let i = 0; i < tokens.length; i++) {
+      const t = tokens[i];
+      if (t === '-' && (i === 0 || tokens[i-1] === '(' || isOp(tokens[i-1]))) {
+        t2.push('0', '-');
+      } else {
+        t2.push(t);
+      }
+    }
+
+    // shunting-yard to RPN
+    const out = [];
+    const ops = [];
+    for (const t of t2) {
+      if (/^\d+(\.\d+)?$/.test(t)) out.push(Number(t));
+      else if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(t)) {
+        const v = Object.prototype.hasOwnProperty.call(vars, t) ? vars[t] : 0;
+        out.push(Number.isFinite(v) ? v : 0);
+      } else if (isOp(t)) {
+        while (ops.length && isOp(ops[ops.length - 1]) && prec[ops[ops.length - 1]] >= prec[t]) {
+          out.push(ops.pop());
+        }
+        ops.push(t);
+      } else if (t === '(') ops.push(t);
+      else if (t === ')') {
+        while (ops.length && ops[ops.length - 1] !== '(') out.push(ops.pop());
+        if (!ops.length) return null;
+        ops.pop();
+      } else return null;
+    }
+    while (ops.length) {
+      const op = ops.pop();
+      if (op === '(' || op === ')') return null;
+      out.push(op);
+    }
+
+    // eval RPN
+    const st = [];
+    for (const t of out) {
+      if (typeof t === 'number') st.push(t);
+      else if (isOp(t)) {
+        const b = st.pop(), a = st.pop();
+        if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+        let r = null;
+        if (t === '+') r = a + b;
+        if (t === '-') r = a - b;
+        if (t === '*') r = a * b;
+        if (t === '/') r = (b === 0) ? NaN : (a / b);
+        if (!Number.isFinite(r)) return null;
+        st.push(r);
+      } else return null;
+    }
+    return st.length === 1 ? st[0] : null;
+  };
+
+  const getSignalsObj = () => {
+    const s = CPOSL?.qState?.signals;
+    if (!s) return null;
+    if (typeof s.entries === 'function') { // Map
+      const o = {};
+      for (const [k,v] of s.entries()) o[k] = v;
+      return o;
+    }
+    if (typeof s === 'object') return s;
+    return null;
+  };
+
+  const setSelection = (liteVarName, payload) => {
+    CPOSL.selections = CPOSL.selections || {};
+    const existing = CPOSL.selections[liteVarName];
+
+    // don't override manual/UI picks
+    if (existing && ['manual','ui','user'].includes(existing.source)) return false;
+
+    // don't override higher confidence
+    if (existing && Number.isFinite(existing.confidence) && Number.isFinite(payload.confidence)) {
+      if ((existing.confidence || 0) > (payload.confidence || 0)) return false;
+    }
+
+    CPOSL.selections[liteVarName] = payload;
+    return true;
+  };
+
+  const signalsObj = getSignalsObj();
+  if (!signalsObj) {
+    console.warn('[Mapping] No CPOSL.qState.signals found. Skipping.');
+    return;
+  }
+
+  // maps can be Map or Object
+  const mapIter = (typeof maps.entries === 'function')
+    ? maps.entries()
+    : Object.entries(maps)[Symbol.iterator]();
+
+  let mappedCount = 0;
+
+  for (const [signalKey, rulesRaw] of mapIter) {
+    const signal = signalsObj[signalKey];
+    if (!signal || !hasValue(signal.value)) continue;
+
     const signalValue = String(signal.value).trim();
-    const confidence = signal.confidence || 0.5;
-    
-    // Apply each mapping rule for this signal
-    mapRules.forEach(function(rule) {
-      const liteVarName = String(rule.LiteVariableName || '').trim();
-      const mappingMethod = String(rule.MappingMethod || 'DIRECT').trim().toUpperCase();
-      const whenCondition = String(rule.WhenSignalValue || '').trim();
-      const thenLiteClass = String(rule.ThenLiteClass || '').trim();
-      
-      if (!liteVarName) {
-        return; // Skip invalid mapping
+    const signalConfidence = Number.isFinite(Number(signal.confidence)) ? Number(signal.confidence) : 0.5;
+
+    const rules = Array.isArray(rulesRaw) ? rulesRaw : (rulesRaw ? [rulesRaw] : []);
+    if (!rules.length) continue;
+
+    for (const rule of rules) {
+      // Your sheet headers:
+      const isActive = toBool(rule?.Is_Active, true);
+      if (!isActive) continue;
+
+      const liteVarName = String(rule?.Lite_Variable_Name ?? '').trim();
+      const method = up(rule?.Mapping_Method ?? 'DIRECT');
+      const whenVal = String(rule?.When_Signal_Value ?? '').trim();
+      const thenClass = String(rule?.Then_Lite_Class ?? '').trim();
+
+      let estimateFormula = String(rule?.Estimate_Formula ?? '').trim();
+      let confidenceRule = toNumSafe(rule?.Confidence_0_1);
+
+      // ---- Fix your current shifted rows:
+      // If Confidence_0_1 is blank but Estimate_Formula looks like 0..1, treat it as confidence.
+      if (confidenceRule === null) {
+        const maybeConf = toNumSafe(estimateFormula);
+        if (maybeConf !== null && maybeConf >= 0 && maybeConf <= 1 && method !== 'ESTIMATE') {
+          confidenceRule = maybeConf;
+          estimateFormula = ''; // this row isn't really a formula; it's a confidence that slipped into the formula column
+        }
       }
-      
-      // Check if condition matches (if specified)
-      let conditionMet = true;
-      if (whenCondition) {
-        conditionMet = (signalValue.toUpperCase() === whenCondition.toUpperCase());
-      }
-      
-      if (!conditionMet) {
-        return; // Condition not met, skip this rule
-      }
-      
-      // Apply mapping based on method
-      if (mappingMethod === 'DIRECT') {
-        // Direct mapping: Signal value → Lite class label
-        const classLabel = thenLiteClass || signalValue;
-        
-        CPOSL.selections[liteVarName] = {
+
+      const confidence = (confidenceRule !== null) ? confidenceRule : signalConfidence;
+
+      if (!liteVarName) continue;
+
+      if (whenVal && up(signalValue) !== up(whenVal)) continue;
+
+      if (method === 'DIRECT') {
+        const classLabel = thenClass || signalValue;
+
+        const ok = setSelection(liteVarName, {
           value: classLabel,
           source: 'questionnaire',
           confidence: confidence,
           signalKey: signalKey
-        };
-        
-        mappedCount++;
-        console.log('[Mapping] DIRECT: ' + signalKey + ' → ' + liteVarName + ' = ' + classLabel);
-        
-      } else if (mappingMethod === 'LOOKUP') {
-        // Lookup mapping: Use numeric value to find class in bounds
-        const numericValue = toNum(signalValue);
-        
-        if (numericValue !== null) {
-          const varData = CPOSL.idx.boundsByVar.get(normKey(liteVarName));
-          
-          if (varData && varData.classes) {
-            // Find matching class based on bounds
-            const matchedClass = varData.classes.find(function(cls) {
-              const lower = cls.LowerBound;
-              const upper = cls.UpperBound;
-              const lowerInc = cls.LowerInclusive;
-              const upperInc = cls.UpperInclusive;
-              
-              const aboveLower = lowerInc ? (numericValue >= lower) : (numericValue > lower);
-              const belowUpper = upperInc ? (numericValue <= upper) : (numericValue < upper);
-              
-              return aboveLower && belowUpper;
-            });
-            
-            if (matchedClass) {
-              CPOSL.selections[liteVarName] = {
-                value: matchedClass.ClassLabel,
-                source: 'questionnaire',
-                confidence: confidence,
-                signalKey: signalKey,
-                numericValue: numericValue
-              };
-              
-              mappedCount++;
-              console.log('[Mapping] LOOKUP: ' + signalKey + ' (' + numericValue + ') → ' + 
-                         liteVarName + ' = ' + matchedClass.ClassLabel);
-            } else {
-              console.warn('[Mapping] LOOKUP failed: No class found for ' + liteVarName + 
-                          ' = ' + numericValue);
-            }
-          }
-        } else {
-          console.warn('[Mapping] LOOKUP requires numeric value, got: ' + signalValue);
+        });
+
+        if (ok) {
+          mappedCount++;
+          console.log('[Mapping] DIRECT:', signalKey, '→', liteVarName, '=', classLabel);
         }
-        
-      } else if (mappingMethod === 'ESTIMATE') {
-        // Estimation: Use formula/proxy to derive numeric value, then lookup
-        const estimateFormula = String(rule.EstimateFormula || '').trim();
-        
-        if (estimateFormula) {
-          try {
-            // Simple variable substitution (e.g., "SIGNAL_A * 0.5")
-            let formula = estimateFormula;
-            
-            // Replace signal keys with their values
-            for (const [key, sig] of Object.entries(CPOSL.qState.signals)) {
-              const val = toNum(sig.value) || 0;
-              formula = formula.replace(new RegExp(key, 'g'), val);
-            }
-            
-            // Evaluate simple math expression
-            const estimatedValue = eval(formula); // ⚠️ Use with caution in production
-            
-            if (typeof estimatedValue === 'number' && !isNaN(estimatedValue)) {
-              const varData = CPOSL.idx.boundsByVar.get(normKey(liteVarName));
-              
-              if (varData && varData.classes) {
-                const matchedClass = varData.classes.find(function(cls) {
-                  const lower = cls.LowerBound;
-                  const upper = cls.UpperBound;
-                  const lowerInc = cls.LowerInclusive;
-                  const upperInc = cls.UpperInclusive;
-                  
-                  const aboveLower = lowerInc ? (estimatedValue >= lower) : (estimatedValue > lower);
-                  const belowUpper = upperInc ? (estimatedValue <= upper) : (estimatedValue < upper);
-                  
-                  return aboveLower && belowUpper;
-                });
-                
-                if (matchedClass) {
-                  CPOSL.selections[liteVarName] = {
-                    value: matchedClass.ClassLabel,
-                    source: 'questionnaire_estimated',
-                    confidence: confidence * 0.8, // Lower confidence for estimates
-                    signalKey: signalKey,
-                    numericValue: estimatedValue,
-                    formula: estimateFormula
-                  };
-                  
-                  mappedCount++;
-                  console.log('[Mapping] ESTIMATE: ' + signalKey + ' → ' + liteVarName + 
-                             ' = ' + matchedClass.ClassLabel + ' (estimated: ' + estimatedValue + ')');
-                }
-              }
-            }
-          } catch (err) {
-            console.error('[Mapping] ESTIMATE formula error for ' + liteVarName + ':', err);
-          }
+
+      } else if (method === 'LOOKUP') {
+        const x = (typeof toNum === 'function') ? toNum(signalValue) : toNumSafe(signalValue);
+        if (x === null) {
+          console.warn('[Mapping] LOOKUP requires numeric signal value. Got:', signalValue, 'for', signalKey);
+          continue;
         }
-        
+
+        const varData = getVarData(liteVarName);
+        const label = matchClassLabel(x, varData);
+        if (!label) {
+          console.warn('[Mapping] LOOKUP failed: no class for', liteVarName, '=', x);
+          continue;
+        }
+
+        const ok = setSelection(liteVarName, {
+          value: label,
+          source: 'questionnaire',
+          confidence: confidence,
+          signalKey: signalKey,
+          numericValue: x
+        });
+
+        if (ok) {
+          mappedCount++;
+          console.log('[Mapping] LOOKUP:', signalKey, '(' + x + ') →', liteVarName, '=', label);
+        }
+
+      } else if (method === 'ESTIMATE') {
+        if (!estimateFormula) continue;
+
+        // Build vars from all signals
+        const vars = {};
+        for (const [k, sig] of Object.entries(signalsObj)) {
+          const n = (typeof toNum === 'function') ? toNum(sig?.value) : toNumSafe(sig?.value);
+          vars[k] = (n === null) ? 0 : n;
+        }
+
+        const x = evalSafeMath(estimateFormula, vars);
+        if (x === null) {
+          console.warn('[Mapping] ESTIMATE unsafe/invalid formula for', liteVarName, ':', estimateFormula);
+          continue;
+        }
+
+        const varData = getVarData(liteVarName);
+        const label = matchClassLabel(x, varData);
+        if (!label) {
+          console.warn('[Mapping] ESTIMATE failed: no class for', liteVarName, '=', x);
+          continue;
+        }
+
+        const ok = setSelection(liteVarName, {
+          value: label,
+          source: 'questionnaire_estimated',
+          confidence: confidence * 0.8,
+          signalKey: signalKey,
+          numericValue: x,
+          formula: estimateFormula
+        });
+
+        if (ok) {
+          mappedCount++;
+          console.log('[Mapping] ESTIMATE:', signalKey, '→', liteVarName, '=', label, '(estimated:', x + ')');
+        }
+
       } else {
-        console.warn('[Mapping] Unknown method: ' + mappingMethod);
+        console.warn('[Mapping] Unknown Mapping_Method:', method, 'for', signalKey, '→', liteVarName);
       }
-    });
+    }
   }
-  
-  console.log('[Mapping] Complete. Mapped ' + mappedCount + ' signals → CPOS-Lite variables.');
-  
-  // Update UI to show mapped selections
-  renderSelectionChips_();
+
+  console.log('[Mapping] Complete. Mapped', mappedCount, 'signals → CPOS-Lite variables.');
+
+  if (typeof renderSelectionChips_ === 'function') {
+    try { renderSelectionChips_(); } catch (e) { console.warn('[Mapping] renderSelectionChips_ failed:', e); }
+  }
 }
+
+
 
 /**
  * Helper: Render mapped selections as chips (for Step 1 recap)
@@ -2951,58 +3262,91 @@ function renderSelectionChips_() {
 
 
 function updateQuestionnaireUIState_() {
-  const btnStart = document.getElementById('btnQStart');
-  const btnBack = document.getElementById('btnQBack');
-  const btnSkip = document.getElementById('btnQSkip');
-  const btnNext = document.getElementById('btnQNext');
+  const btnStart  = document.getElementById('btnQStart');
+  const btnBack   = document.getElementById('btnQBack');
+  const btnSkip   = document.getElementById('btnQSkip');
+  const btnNext   = document.getElementById('btnQNext');
   const btnFinish = document.getElementById('btnQFinish');
-  const progress = document.getElementById('qProgress');
+  const progress  = document.getElementById('qProgress');
 
-  // ✅ NEW: Get current language
+  // ✅ Safe defaults (prevents undefined from freezing UI)
+  if (!window.CPOSL) window.CPOSL = {};
+  if (!CPOSL.qState) CPOSL.qState = {};
+  if (!Array.isArray(CPOSL.qState.history)) CPOSL.qState.history = [];
+  if (typeof CPOSL.qState.answeredCount !== 'number') CPOSL.qState.answeredCount = 0;
+  if (typeof CPOSL.qState.minTarget !== 'number') CPOSL.qState.minTarget = 5; // pick your default
+  if (typeof CPOSL.qState.stop !== 'boolean') CPOSL.qState.stop = false;
+
   const lang = CPOSL.language || 'EN';
-  const inProgress = CPOSL.qState.current !== null;
+
+  // ✅ CRITICAL FIX: undefined should NOT mean "in progress"
+  const inProgress = (CPOSL.qState.current != null); // true only if not null/undefined
   const canGoBack = CPOSL.qState.history.length > 0;
-  const answerValid = validateAnswer_(readAnswerFromUI_());
-  const canFinish = CPOSL.qState.answeredCount >= CPOSL.qState.minTarget || CPOSL.qState.stop;
+
+  let answerValid = false;
+  try {
+    answerValid = validateAnswer_(readAnswerFromUI_());
+  } catch (e) {
+    // If UI not rendered yet, treat as not valid (don’t break update function)
+    answerValid = false;
+  }
+
+  const canFinish =
+    (CPOSL.qState.answeredCount >= CPOSL.qState.minTarget) || CPOSL.qState.stop;
+
+  // ✅ questionnaireReady: guard missing objects
+  const questionnaireReady = !!(
+    CPOSL.q &&
+    CPOSL.q.available &&
+    CPOSL.q.idx &&
+    CPOSL.q.idx.qBankById &&
+    CPOSL.q.idx.startQuestions &&
+    CPOSL.q.idx.qBankById.size > 0 &&
+    CPOSL.q.idx.startQuestions.length > 0
+  );
+
+  // Optional: debug once per call (remove later)
+  console.log('[CPOS][Q][UI] state', {
+    current: CPOSL.qState.current,
+    inProgress,
+    questionnaireReady,
+    bankSize: CPOSL.q?.idx?.qBankById?.size,
+    startCount: CPOSL.q?.idx?.startQuestions?.length
+  });
 
   if (btnStart) {
-    btnStart.disabled = inProgress;
-    // ✅ NEW: Localized button text
-    btnStart.textContent = lang === 'HI' ? 'शुरू करें' : 'Start';
+    btnStart.disabled = inProgress || !questionnaireReady;
+    btnStart.textContent = (lang === 'HI') ? 'शुरू करें' : 'Start';
   }
   if (btnBack) {
     btnBack.disabled = !inProgress || !canGoBack;
-    // ✅ NEW: Localized button text
-    btnBack.textContent = lang === 'HI' ? 'पीछे' : 'Back';
+    btnBack.textContent = (lang === 'HI') ? 'पीछे' : 'Back';
   }
   if (btnSkip) {
     btnSkip.disabled = !inProgress;
-    // ✅ NEW: Localized button text
-    btnSkip.textContent = lang === 'HI' ? 'छोड़ें' : 'Skip';
+    btnSkip.textContent = (lang === 'HI') ? 'छोड़ें' : 'Skip';
   }
   if (btnNext) {
     btnNext.disabled = !inProgress || !answerValid;
-    // ✅ NEW: Localized button text
-    btnNext.textContent = lang === 'HI' ? 'अगला' : 'Next';
+    btnNext.textContent = (lang === 'HI') ? 'अगला' : 'Next';
   }
   if (btnFinish) {
     btnFinish.disabled = !inProgress || !canFinish;
-    // ✅ NEW: Localized button text
-    btnFinish.textContent = lang === 'HI' ? 'समाप्त' : 'Finish';
+    btnFinish.textContent = (lang === 'HI') ? 'समाप्त' : 'Finish';
   }
 
   if (progress) {
-    const target = CPOSL.qState.minTarget;
-    const answered = CPOSL.qState.answeredCount;
+    const target = CPOSL.qState.minTarget || 1;
+    const answered = CPOSL.qState.answeredCount || 0;
     const pct = Math.min(100, Math.round((answered / target) * 100));
-    // ✅ NEW: Localized progress text
-    if (lang === 'HI') {
-      progress.textContent = `उत्तर दिए ${answered} / लक्ष्य ${target} (${pct}%)`;
-    } else {
-      progress.textContent = `Answered ${answered} / target ${target} (${pct}%)`;
-    }
+
+    progress.textContent =
+      (lang === 'HI')
+        ? `उत्तर दिए ${answered} / लक्ष्य ${target} (${pct}%)`
+        : `Answered ${answered} / target ${target} (${pct}%)`;
   }
 }
+
 
 
 
@@ -3049,6 +3393,13 @@ function updateQuestionnaireUIState_() {
     // Questionnaire navigation
     // ---------------------------
 function qStart() {
+
+    if (!CPOSL.q.available || CPOSL.q.idx.qBankById.size === 0) {
+    document.getElementById('qQuestionText').textContent = 'Questionnaire is unavailable. Please verify CPOS_Q_Bank and related sheets.';
+    setStatus(false, 'Questionnaire unavailable');
+    updateQuestionnaireUIState_();
+    return;
+  }
   CPOSL.qState.sessionId = 'Q-' + Date.now();
   CPOSL.qState.answered = {};
   CPOSL.qState.signals = {};
@@ -4100,59 +4451,232 @@ function updateDerivedBoxWithEstimations_(mapped, estimated) {
     // ---------------------------
     // Init
     // ---------------------------
-    async function init() {
-      console.log('[CPOS-Lite] init() start');
-      setStatus(true, 'Loading CPOS_Lite tables…');
+async function init() {
+  console.log('[CPOS-Lite] init() start');
+  setStatus(true, 'Loading CPOS_Lite tables…');
 
-      try {
-        const res = await getCPOSLiteTables();
-        if (!res || res.ok === false) {
-          setStatus(false, 'Failed to load CPOS_Lite tables (bad response).');
-          return;
-        }
+  // ✅ HARDEN: ensure required objects exist early
+  if (!window.CPOSL) window.CPOSL = {};
+  if (!CPOSL.data) CPOSL.data = {};
+  if (!CPOSL.idx) CPOSL.idx = {};
+  if (!CPOSL.q) CPOSL.q = {};
+  if (!CPOSL.q.idx) CPOSL.q.idx = {};
+  if (!CPOSL.qState) CPOSL.qState = { mode: 'BASIC' };
 
-        CPOSL.data.bounds = res.bounds || [];
-        CPOSL.data.desirability = res.desirability || [];
-        CPOSL.data.weights = res.weights || [];
+  // ✅ HARDEN: questionnaire state fields many functions assume exist
+  if (!CPOSL.qState.mode) CPOSL.qState.mode = 'BASIC';
+  if (!CPOSL.qState.answered) CPOSL.qState.answered = {};
+  if (!CPOSL.qState.signals) CPOSL.qState.signals = {};
+  if (!CPOSL.qState.queue) CPOSL.qState.queue = [];
+  if (!CPOSL.qState.current) CPOSL.qState.current = null;
+  if (!CPOSL.qState.history) CPOSL.qState.history = [];
+  if (typeof CPOSL.qState.answeredCount !== 'number') CPOSL.qState.answeredCount = 0;
+  if (typeof CPOSL.qState.minTarget !== 'number') CPOSL.qState.minTarget = 8;
+  if (!CPOSL.qState.stop) CPOSL.qState.stop = false;
 
-        buildIndexes_();
+  // ✅ HARDEN: language default
+  if (!CPOSL.language) CPOSL.language = 'EN';
 
-        const nFactors = CPOSL.idx.boundsByVar.size;
+  // ================= TEMP DEBUG (remove later) =================
+  try {
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
 
-        try {
-          const qRes = await getCPOSQuestionnaireConfig();
-          if (qRes && qRes.ok !== false) {
-            CPOSL.q.bank = qRes.bank || [];
-            CPOSL.q.options = qRes.options || [];
-            CPOSL.q.derivationRules = qRes.derivationRules || [];
-            CPOSL.q.routingRules = qRes.routingRules || [];
-            CPOSL.q.signalToLiteMap = qRes.signalToLiteMap || [];
-            CPOSL.q.liteBounds = qRes.liteBounds || [];
+      google.script.run
+        .withSuccessHandler(ctx => console.log('[CPOS][DBG] Spreadsheet context', ctx))
+        .withFailureHandler(err => console.error('[CPOS][DBG] Spreadsheet context failed', err))
+        .debugSpreadsheetContext();
 
-            buildQuestionnaireIndexes_();
+      ['CPOS_Q_Bank','CPOS_Q_Options','CPOS_Q_Derivation_Rules','CPOS_Q_Routing_Rules','CPOS_Q_Signal_to_LiteFactor_Map']
+        .forEach(name => {
+          google.script.run
+            .withSuccessHandler(x => console.log('[CPOS][DBG] peek', x))
+            .withFailureHandler(e => console.error('[CPOS][DBG] peek failed', name, e))
+            .debugTablePeek(name, 2);
+        });
 
-            const nQ = CPOSL.q.idx.qBankById.size;
-            setStatus(true, `Ready • Factors=${nFactors} • QBank=${nQ}`);
-          } else {
-            console.warn('[CPOS][Q] Failed to load questionnaire config');
-            setStatus(true, `Ready • Factors=${nFactors} • Questionnaire unavailable`);
-            document.getElementById('qQuestionText').textContent = 'Questionnaire config not available.';
-            document.getElementById('btnQStart').disabled = true;
-          }
-        } catch (qErr) {
-          console.warn('[CPOS][Q] Load error:', qErr);
-          setStatus(true, `Ready • Factors=${nFactors} • Questionnaire unavailable`);
-          document.getElementById('qQuestionText').textContent = 'Questionnaire config load failed.';
-          document.getElementById('btnQStart').disabled = true;
-        }
+      google.script.run
+        .withSuccessHandler(x => console.log('[CPOS][DBG] getCPOSQuestionnaireConfig() return', x))
+        .withFailureHandler(e => console.error('[CPOS][DBG] getCPOSQuestionnaireConfig() return FAILED', e))
+        .debugQuestionnaireConfigReturn();
 
-        renderFactorForm();
-        updateQuestionnaireUIState_();
-      } catch (err) {
-        console.error('[CPOS-Lite] load error:', err);
-        setStatus(false, 'Load error: ' + (err?.message || String(err)));
-      }
+    } else {
+      console.warn('[CPOS][DBG] Apps Script runtime not available for debug calls');
     }
+  } catch (e) {
+    console.warn('[CPOS][DBG] debug call error:', e);
+  }
+  // =============================================================
+
+  // ✅ DROP-IN helper: normalize tables to array-of-objects
+  function normalizeTable_(raw) {
+    // Already array? Could be objects OR arrays.
+    if (Array.isArray(raw)) return raw;
+
+    // {headers, rows}
+    const headers = Array.isArray(raw?.headers) ? raw.headers : [];
+    const rows = Array.isArray(raw?.rows) ? raw.rows : [];
+    if (!headers.length || !rows.length) return [];
+
+    return rows.map(r => {
+      if (r && typeof r === 'object' && !Array.isArray(r)) return r; // already object
+
+      const obj = {};
+      for (let i = 0; i < headers.length; i++) {
+        const h = String(headers[i] ?? '').trim();
+        if (!h) continue;
+        obj[h] = Array.isArray(r) ? r[i] : undefined;
+      }
+      return obj;
+    });
+  }
+
+  // Safety net: if we somehow still got arrays-of-arrays, map using headers
+  function arraysToObjectsIfNeeded_(arr, headers) {
+    if (!Array.isArray(arr) || arr.length === 0) return arr;
+    if (!Array.isArray(arr[0])) return arr; // already objects
+    if (!Array.isArray(headers) || headers.length === 0) return []; // can't map
+
+    return arr.map(r => {
+      const obj = {};
+      for (let i = 0; i < headers.length; i++) {
+        const h = String(headers[i] ?? '').trim();
+        if (!h) continue;
+        obj[h] = r[i];
+      }
+      return obj;
+    });
+  }
+
+  try {
+    const res = await getCPOSLiteTables();
+    if (!res || res.ok !== true) {
+      setStatus(false, 'Failed to load CPOS_Lite tables (bad response).');
+      return;
+    }
+
+    CPOSL.data.bounds = Array.isArray(res.bounds) ? res.bounds : [];
+    CPOSL.data.desirability = Array.isArray(res.desirability) ? res.desirability : [];
+    CPOSL.data.weights = Array.isArray(res.weights) ? res.weights : [];
+
+    buildIndexes_();
+    const nFactors = CPOSL.idx.boundsByVar.size;
+
+    // ---------------- Questionnaire Load ----------------
+    try {
+      const qRes = await getCPOSQuestionnaireConfig();
+
+      if (!qRes || qRes.ok !== true) {
+        console.warn('[CPOS][Q] Bad questionnaire response:', qRes);
+        CPOSL.q.available = false;
+
+        setStatus(true, `Ready • Factors=${nFactors} • Questionnaire unavailable`);
+
+        const qText = document.getElementById('qQuestionText');
+        const btn = document.getElementById('btnQStart');
+        if (qText) qText.textContent = 'Questionnaire config not available (bad response).';
+        if (btn) btn.disabled = true;
+
+      } else {
+
+        // ✅ IMPORTANT: normalize BOTH shapes (arrays OR {headers, rows})
+        const bankRaw   = qRes.bank;
+        const optRaw    = qRes.options;
+        const derivRaw  = qRes.derivationRules;
+        const routeRaw  = qRes.routingRules;
+        const mapRaw    = qRes.signalToLiteMap;
+        const boundsRaw = qRes.liteBounds;
+
+        let bankArr   = normalizeTable_(bankRaw);
+        let optArr    = normalizeTable_(optRaw);
+        let derivArr  = normalizeTable_(derivRaw);
+        let routeArr  = normalizeTable_(routeRaw);
+        let mapArr    = normalizeTable_(mapRaw);
+        let boundsArr = normalizeTable_(boundsRaw);
+
+        // Safety net if any came back as direct rows[] without mapping
+        bankArr   = arraysToObjectsIfNeeded_(bankArr,   bankRaw?.headers   || qRes?.meta?.bankHeaders);
+        optArr    = arraysToObjectsIfNeeded_(optArr,    optRaw?.headers    || qRes?.meta?.optionsHeaders);
+        derivArr  = arraysToObjectsIfNeeded_(derivArr,  derivRaw?.headers  || qRes?.meta?.derivHeaders);
+        routeArr  = arraysToObjectsIfNeeded_(routeArr,  routeRaw?.headers  || qRes?.meta?.routesHeaders);
+        mapArr    = arraysToObjectsIfNeeded_(mapArr,    mapRaw?.headers    || qRes?.meta?.signalMapHeaders);
+        boundsArr = arraysToObjectsIfNeeded_(boundsArr, boundsRaw?.headers || qRes?.meta?.boundsHeaders);
+
+        CPOSL.q.bank = bankArr;
+        CPOSL.q.options = optArr;
+        CPOSL.q.derivationRules = derivArr;
+        CPOSL.q.routingRules = routeArr;
+        CPOSL.q.signalToLiteMap = mapArr;
+        CPOSL.q.liteBounds = boundsArr;
+
+        console.log('[CPOS][Q] normalized sample', {
+          bankLen: CPOSL.q.bank.length,
+          bank0Keys: CPOSL.q.bank[0] ? Object.keys(CPOSL.q.bank[0]).slice(0, 20) : null,
+          bank0: CPOSL.q.bank[0] || null
+        });
+
+        buildQuestionnaireIndexes_();
+
+        // ✅ wire language radios only AFTER q state exists
+        try { setupLanguageRadios_(); } catch (e) {
+          console.warn('[CPOS][Q] setupLanguageRadios_ failed:', e);
+        }
+
+        if (Array.isArray(qRes.warnings) && qRes.warnings.length) {
+          console.warn('[CPOS][Q] Backend warnings:', qRes.warnings);
+        }
+        if (qRes.meta) {
+          console.log('[CPOS][Q] backend meta', qRes.meta);
+        }
+
+        const nQ = CPOSL.q.idx.qBankById.size;
+        const nStart = CPOSL.q.idx.startQuestions.length;
+
+        CPOSL.q.available = nQ > 0 && nStart > 0;
+
+        const qText = document.getElementById('qQuestionText');
+        const btn = document.getElementById('btnQStart');
+
+        if (!CPOSL.q.available) {
+          const reason = (nQ === 0)
+            ? 'Questionnaire data is empty or has invalid headers. Verify CPOS_Q_Bank has Question_ID and Is_Active.'
+            : 'Questionnaire loaded but no start questions found. Ensure Group_Code=START or valid Sequence/Mode.';
+
+          setStatus(true, `Ready • Factors=${nFactors} • Questionnaire unavailable`);
+          if (qText) qText.textContent = reason;
+          if (btn) btn.disabled = true;
+
+        } else {
+          setStatus(true, `Ready • Factors=${nFactors} • QBank=${nQ}`);
+          if (btn) btn.disabled = false;
+        }
+      }
+
+    } catch (qErr) {
+      console.warn('[CPOS][Q] Load error:', qErr);
+      CPOSL.q.available = false;
+
+      setStatus(true, `Ready • Factors=${nFactors} • Questionnaire unavailable`);
+
+      const qText = document.getElementById('qQuestionText');
+      const btn = document.getElementById('btnQStart');
+      if (qText) qText.textContent = 'Questionnaire config load failed.';
+      if (btn) btn.disabled = true;
+    }
+    // ---------------------------------------------------
+
+    renderFactorForm();
+
+    // ✅ CRITICAL: final UI enablement after questionnaire + language wiring
+    updateQuestionnaireUIState_();
+
+  } catch (err) {
+    console.error('[CPOS-Lite] load error:', err);
+    setStatus(false, 'Load error: ' + (err?.message || String(err)));
+  }
+}
+
+
+
 
     document.addEventListener('DOMContentLoaded', function() {
   init();
@@ -5345,6 +5869,49 @@ function applyEstimationMappings() {
     
     return estimated;
 }
+
+
+function initLanguageSelector_() {
+  const en = document.getElementById('langEN');
+  const hi = document.getElementById('langHI');
+  if (!en || !hi) return;
+
+  const apply = () => {
+    CPOSL.language = hi.checked ? 'HI' : 'EN';
+    // Re-render current question + buttons
+    renderQuestionUI_();
+    updateQuestionnaireUIState_();
+  };
+
+  en.addEventListener('change', apply);
+  hi.addEventListener('change', apply);
+
+  // Apply once on load (in case default is HI)
+  apply();
+}
+
+
+function setupLanguageRadios_() {
+  const en = document.getElementById('langEN');
+  const hi = document.getElementById('langHI');
+  if (!en || !hi) {
+    console.warn('[Lang] langEN/langHI radios not found.');
+    return;
+  }
+
+  const apply = () => {
+    CPOSL.language = hi.checked ? 'HI' : 'EN';
+    renderQuestionUI_();
+  };
+
+  en.addEventListener('change', apply);
+  hi.addEventListener('change', apply);
+
+  apply(); // initialize
+}
+
+
+document.addEventListener('DOMContentLoaded', initLanguageSelector_);
 
 
 
