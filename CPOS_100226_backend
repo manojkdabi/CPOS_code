@@ -106,6 +106,53 @@ function cpos_tryGetSheet_(name) {
   return ss.getSheetByName(name) || null;
 }
 
+function cpos_findSheetByAliases_(names) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const list = Array.isArray(names) ? names : [names];
+
+  for (let i = 0; i < list.length; i++) {
+    const n = String(list[i] || '').trim();
+    if (!n) continue;
+    const exact = ss.getSheetByName(n);
+    if (exact) return exact;
+  }
+
+  const all = ss.getSheets();
+  const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const wanted = list.map(norm).filter(Boolean);
+  for (let i = 0; i < all.length; i++) {
+    const sheet = all[i];
+    const n = norm(sheet.getName());
+    if (wanted.indexOf(n) >= 0) return sheet;
+  }
+
+  return null;
+}
+
+function debugSpreadsheetContext() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  return {
+    id: ss ? ss.getId() : null,
+    name: ss ? ss.getName() : null,
+    sheets: ss ? ss.getSheets().map(s => s.getName()) : []
+  };
+}
+
+// TEMP DEBUG: inspect what the backend thinks are headers + row counts
+function debugTablePeek(sheetName, limit) {
+  limit = limit || 3;
+  const tbl = cpos_getTableFast_(sheetName, { allowMissing: true });
+  return {
+    sheetName,
+    headers: tbl.headers,
+    rowCount: (tbl.rows || []).length,
+    firstRows: (tbl.rows || []).slice(0, limit),
+    warnings: tbl.warnings
+  };
+}
+
+
+
 function cpos_nowISO_() {
   return new Date().toISOString();
 }
@@ -119,6 +166,10 @@ function cpos_toBool_(v, defaultValue) {
   if (s === 'true' || s === 'yes' || s === '1') return true;
   if (s === 'false' || s === 'no' || s === '0') return false;
   return (defaultValue === undefined) ? true : !!defaultValue;
+}
+
+function cpos_parseDelimitedLine_(value, delimiter) {
+  return String(value || '').split(delimiter).map(x => String(x || '').trim());
 }
 
 function cpos_getTableFast_(sheetName, opts) {
@@ -136,7 +187,19 @@ function cpos_getTableFast_(sheetName, opts) {
     return { headers: [], rows: [], warnings };
   }
 
-  const rawHeaders = values[0] || [];
+  let rawHeaders = values[0] || [];
+  let dataRows = values.slice(1);
+
+  // Production-hardening: recover from TSV/CSV pasted into a single column.
+  if (rawHeaders.length === 1) {
+    const first = String(rawHeaders[0] || '');
+    if (first.indexOf('	') >= 0 || first.indexOf(',') >= 0) {
+      const delim = first.indexOf('	') >= 0 ? '	' : ',';
+      rawHeaders = cpos_parseDelimitedLine_(first, delim);
+      dataRows = dataRows.map(r => cpos_parseDelimitedLine_((r || [])[0], delim));
+      warnings.push(`Detected ${delim === '	' ? 'TSV' : 'CSV'}-in-one-column format in sheet: ${sheetName}`);
+    }
+  }
   const headers = rawHeaders.map(h => String(h || '').trim());
   const headerIndex = headers
     .map((h, idx) => ({ h, idx }))
@@ -148,8 +211,8 @@ function cpos_getTableFast_(sheetName, opts) {
   }
   const rows = [];
 
-  for (let i = 1; i < values.length; i++) {
-    const r = values[i] || [];
+  for (let i = 0; i < dataRows.length; i++) {
+    const r = dataRows[i] || [];
     let empty = true;
     const obj = {};
     for (let j = 0; j < headerIndex.length; j++) {
@@ -392,20 +455,20 @@ function evaluateCPOS_Lite_v1(selections, opts) {
       if (!mainCrop) {
         eligibility = 'UNKNOWN';
         eligibilityReasons.push('Crop type unknown - need to ask main crop question');
-      } else if (mainCrop !== 'RICE_FLOODED' && mainCrop !== 'RICE-FLOODED' && 
-                 !String(mainCrop).toLowerCase().includes('rice') || 
-                 String(mainCrop).toLowerCase().includes('aerobic')) {
+      } else if (mainCrop !== 'RICE_FLOODED' && mainCrop !== 'RICE-FLOODED' &&
+        !String(mainCrop).toLowerCase().includes('rice') ||
+        String(mainCrop).toLowerCase().includes('aerobic')) {
         eligibility = 'NO';
         eligibilityReasons.push('AWD pathway only applicable for flooded rice. Your crop: ' + mainCrop);
       } else if (!waterMgmt) {
         eligibility = 'UNKNOWN';
         eligibilityReasons.push('Water management unknown - need to ask Q_M049');
-      } else if (waterMgmt === 'AWD_MILD' || waterMgmt === 'AWD_SEVERE' || 
-                 String(waterMgmt).toLowerCase().includes('awd')) {
+      } else if (waterMgmt === 'AWD_MILD' || waterMgmt === 'AWD_SEVERE' ||
+        String(waterMgmt).toLowerCase().includes('awd')) {
         eligibility = 'NO';
         eligibilityReasons.push('Already practicing AWD (no additionality). Baseline required: continuous flooding');
       } else if (waterMgmt === 'CONTINUOUS_FLOOD' || waterMgmt === 'CONTINUOUS-FLOOD' ||
-                 String(waterMgmt).toLowerCase().includes('continuous')) {
+        String(waterMgmt).toLowerCase().includes('continuous')) {
         eligibility = 'YES'; // ✅ Eligible!
         eligibilityReasons.push('✅ Eligible: Flooded rice with continuous flooding baseline');
       } else {
@@ -530,11 +593,11 @@ function evaluateCPOS_Lite_v1(selections, opts) {
     }
 
     const final_text =
-      eligibility === 'NO' 
+      eligibility === 'NO'
         ? `Not eligible for ${pathway}. ${eligibilityReasons.join(' ')}`
         : eligibility === 'UNKNOWN'
-        ? `Eligibility unknown for ${pathway}. ${eligibilityReasons.join(' ')}`
-        : `Normalized suitability score is ${score.toFixed(1)}/100 using weights (0–10) and desirability (0–1). ` +
+          ? `Eligibility unknown for ${pathway}. ${eligibilityReasons.join(' ')}`
+          : `Normalized suitability score is ${score.toFixed(1)}/100 using weights (0–10) and desirability (0–1). ` +
           (top.length ? (`Key drivers: ${top.map(x => `${x.varName}=${x.cls}`).join('; ')}.`) : '');
 
     results[pathway] = {
@@ -657,29 +720,86 @@ function cpos_upsertDraft_(p) {
 }
 
 
+function cpos_getTableByAliases_(names) {
+  const warnings = [];
+  const sh = cpos_findSheetByAliases_(names);
+  if (!sh) {
+    warnings.push('Missing sheet (aliases): ' + (Array.isArray(names) ? names.join(' | ') : names));
+    return { headers: [], rows: [], warnings, sheetName: '' };
+  }
+  const tbl = cpos_getTableFast_(sh.getName(), { allowMissing: false });
+  tbl.sheetName = sh.getName();
+  return tbl;
+}
+
 
 /**
  * PUBLIC: getCPOSQuestionnaireConfig()
  * Returns questionnaire config + Bounds classes for mapping validation.
  */
 function getCPOSQuestionnaireConfig() {
-  const bank = cpos_getTableFast_('CPOS_Q_Bank');
-  const opts = cpos_getTableFast_('CPOS_Q_Options');
-  const deriv = cpos_getTableFast_('CPOS_Q_Derivation_Rules');
-  const routes = cpos_getTableFast_('CPOS_Q_Routing_Rules');
-  const map = cpos_getTableFast_('CPOS_Q_Signal_to_LiteFactor_Map');
-  const bounds = cpos_getTableFast_('CPOS_Lite_Bounds');
+  const bank = cpos_getTableByAliases_(['CPOS_Q_Bank', 'CPOS_QBank']);
+  const opts = cpos_getTableByAliases_(['CPOS_Q_Options', 'CPOS_QOptions']);
+  const deriv = cpos_getTableByAliases_(['CPOS_Q_Derivation_Rules', 'CPOS_Q_DerivationRules']);
+  const routes = cpos_getTableByAliases_(['CPOS_Q_Routing_Rules', 'CPOS_Q_RoutingRules']);
+  const map = cpos_getTableByAliases_(['CPOS_Q_Signal_to_LiteFactor_Map', 'CPOS_Q_SignaltoLiteFactorMap']);
+  const bounds = cpos_getTableByAliases_(['CPOS_Lite_Bounds']);
+  const normalizedBank = normalizeQuestionnaireFields(bank.rows || []);
+  const normalizedOpts = normalizeQuestionnaireFields(opts.rows || []);
+  const normalizedDeriv = normalizeQuestionnaireFields(deriv.rows || []);
+  const normalizedRoutes = normalizeQuestionnaireFields(routes.rows || []);
+  const normalizedMap = normalizeQuestionnaireFields(map.rows || []);
+  const normalizedBounds = normalizeQuestionnaireFields(bounds.rows || []);
 
+  const warnings = []
+    .concat(bank.warnings || [])
+    .concat(opts.warnings || [])
+    .concat(deriv.warnings || [])
+    .concat(routes.warnings || [])
+    .concat(map.warnings || [])
+    .concat(bounds.warnings || []); if ((normalizedBank || []).length && !normalizedBank.some(r => String(r.QuestionID || r.Question_ID || '').trim())) {
+      warnings.push('CPOS_Q_Bank rows found but no QuestionID/Question_ID values were recognized. Check header spelling.');
+    }
+
+
+return {
+  ok: true,
+  bank: normalizedBank,
+  options: normalizedOpts,
+  derivationRules: normalizedDeriv,
+  routingRules: normalizedRoutes,
+  signalToLiteMap: normalizedMap,
+  bounds: normalizedBounds,
+  warnings,
+  meta: {
+    bankRows: normalizedBank.length,
+    optionsRows: normalizedOpts.length,
+    derivRows: normalizedDeriv.length,
+    routesRows: normalizedRoutes.length,
+    signalMapRows: normalizedMap.length
+  }
+};
+
+}
+
+// TEMP DEBUG: prove what getCPOSQuestionnaireConfig() is actually returning
+function debugQuestionnaireConfigReturn() {
+  const res = getCPOSQuestionnaireConfig();
   return {
-    ok: true,
-    bank: normalizeQuestionnaireFields(bank.rows || []),              // ✅ NORMALIZE!
-    options: normalizeQuestionnaireFields(opts.rows || []),           // ✅ NORMALIZE!
-    derivationRules: normalizeQuestionnaireFields(deriv.rows || []),  // ✅ NORMALIZE!
-    routingRules: normalizeQuestionnaireFields(routes.rows || []),    // ✅ NORMALIZE!
-    signalToLiteMap: normalizeQuestionnaireFields(map.rows || []),    // ✅ NORMALIZE!
-    liteBounds: normalizeQuestionnaireFields(bounds.rows || [])       // ✅ NORMALIZE!
+    ok: res?.ok,
+    bankLen: Array.isArray(res?.bank) ? res.bank.length : -1,
+    optionsLen: Array.isArray(res?.options) ? res.options.length : -1,
+    derivLen: Array.isArray(res?.derivationRules) ? res.derivationRules.length : -1,
+    routesLen: Array.isArray(res?.routingRules) ? res.routingRules.length : -1,
+    signalMapLen: Array.isArray(res?.signalToLiteMap) ? res.signalToLiteMap.length : -1,
+    liteBoundsLen: Array.isArray(res?.liteBounds) ? res.liteBounds.length : -1,
+    warnings: res?.warnings || [],
+    meta: res?.meta || null,
+    // tiny sample to verify field names coming through
+    bankFirst: Array.isArray(res?.bank) && res.bank[0] ? Object.keys(res.bank[0]).slice(0, 15) : null
   };
 }
+
 
 
 
@@ -713,7 +833,7 @@ function saveCPOSQuestionnaireSession(payload) {
   const responses = Array.isArray(payload.responses) ? payload.responses : [];
   const probeResponses = responses.filter(r => r.IsProbe || r.Is_Probe);
   const probeCount = probeResponses.length;
-  
+
   // Calculate average confidence
   let totalConf = 0;
   let confCount = 0;
@@ -725,7 +845,7 @@ function saveCPOSQuestionnaireSession(payload) {
     }
   });
   const avgConfidence = confCount > 0 ? (totalConf / confCount) : 0.85;
-  
+
   // Get probe IDs that were triggered
   const probeTriggered = probeResponses
     .map(r => String(r.Question_ID || r.QuestionID || '').replace('PROBE_', ''))
@@ -910,22 +1030,22 @@ function TEST_sampleEvaluation() {
 
 function saveCPOSSession(payload) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  
+
   // Save session with probe data
   let sessionSheet = ss.getSheetByName('CPOS_Sessions');
   if (!sessionSheet) {
     sessionSheet = ss.insertSheet('CPOS_Sessions');
-    sessionSheet.appendRow(['SessionID', 'Timestamp', 'Mode', 'MinTarget', 
-                           'MaxCap', 'AnsweredCount', 'ProbeCount', 
-                           'ProbeTriggered', 'AvgConfidence', 'Status']);
+    sessionSheet.appendRow(['SessionID', 'Timestamp', 'Mode', 'MinTarget',
+      'MaxCap', 'AnsweredCount', 'ProbeCount',
+      'ProbeTriggered', 'AvgConfidence', 'Status']);
   }
-  
+
   const session = payload.session || {};
   const probeIds = payload.responses
     .filter(r => r.IsProbe)
     .map(r => r.QuestionID.replace('PROBE_', ''))
     .join(',');
-  
+
   sessionSheet.appendRow([
     session.SessionID,
     new Date(),
@@ -938,18 +1058,18 @@ function saveCPOSSession(payload) {
     payload.avgConfidence || 0.85,
     session.Status || 'COMPLETED'
   ]);
-  
+
   // Save responses with probe metadata
   let responseSheet = ss.getSheetByName('CPOS_Responses');
   if (!responseSheet) {
     responseSheet = ss.insertSheet('CPOS_Responses');
-    responseSheet.appendRow(['SessionID', 'Timestamp', 'QuestionID', 
-                            'AnswerRaw', 'AnswerCodes', 'IsProbe', 
-                            'ProbeReason', 'ConfidenceBoost']);
+    responseSheet.appendRow(['SessionID', 'Timestamp', 'QuestionID',
+      'AnswerRaw', 'AnswerCodes', 'IsProbe',
+      'ProbeReason', 'ConfidenceBoost']);
   }
-  
+
   const responses = payload.responses || [];
-  responses.forEach(function(resp) {
+  responses.forEach(function (resp) {
     responseSheet.appendRow([
       session.SessionID,
       new Date(),
@@ -961,9 +1081,9 @@ function saveCPOSSession(payload) {
       resp.ConfidenceBoost || 0
     ]);
   });
-  
+
   Logger.log('Session saved: ' + session.SessionID + ', Probes: ' + (session.ProbeCount || 0));
-  
+
   return {
     success: true,
     sessionId: session.SessionID,
@@ -994,7 +1114,7 @@ function normalizeQuestionnaireFields(data) {
     'Units_Label': 'UnitsLabel',
     'Confidentiality_Tag': 'ConfidentialityTag',
     'Context_Template': 'ContextTemplate',
-    
+
     // Option fields
     'Option_ID': 'OptionID',
     'Option_Code': 'OptionCode',
@@ -1002,7 +1122,7 @@ function normalizeQuestionnaireFields(data) {
     'Option_Label_EN': 'OptionLabelEN',
     'Option_Label_HI': 'OptionLabelHI',
     'Option_Order': 'OptionOrder',
-    
+
     // Derivation rule fields
     'Rule_ID': 'RuleID',
     'When_Question_ID': 'WhenQuestionID',
@@ -1011,7 +1131,7 @@ function normalizeQuestionnaireFields(data) {
     'Then_Signal_Key': 'ThenSignalKey',
     'Then_Signal_Value': 'ThenSignalValue',
     'Then_Signal_Score': 'ThenSignalScore',
-    
+
     // Routing rule fields
     'Route_ID': 'RouteID',
     'Current_Question_ID': 'CurrentQuestionID',
@@ -1020,7 +1140,7 @@ function normalizeQuestionnaireFields(data) {
     'Condition_Operator': 'ConditionOperator',
     'Condition_Value': 'ConditionValue',
     'Route_Action': 'RouteAction',
-    
+
     // Signal mapping fields
     'Signal_Key': 'SignalKey',
     'Lite_Variable_Name': 'LiteVariableName',
@@ -1028,7 +1148,7 @@ function normalizeQuestionnaireFields(data) {
     'When_Signal_Value': 'WhenSignalValue',
     'Then_Lite_Class': 'ThenLiteClass',
     'Estimate_Formula': 'EstimateFormula',
-    
+
     // Bounds fields
     'Variable_Name': 'VariableName',
     'Factor_ID': 'FactorID',
@@ -1041,19 +1161,81 @@ function normalizeQuestionnaireFields(data) {
     'Lower_Inclusive': 'LowerInclusive',
     'Upper_Inclusive': 'UpperInclusive'
   };
-  
+
+  const normalizedFieldMap = {};
+  Object.keys(fieldMap).forEach(key => {
+    normalizedFieldMap[normalizeFieldKey_(key)] = fieldMap[key];
+  });
+
   if (Array.isArray(data)) {
     return data.map(row => {
       const normalized = {};
       for (const [oldKey, value] of Object.entries(row)) {
-        const newKey = fieldMap[oldKey] || oldKey;
-        normalized[newKey] = value;
+        const direct = fieldMap[oldKey];
+        const fuzzy = normalizedFieldMap[normalizeFieldKey_(oldKey)];
+        const newKey = direct || fuzzy || oldKey; normalized[newKey] = value;
       }
+
+    if (!String(normalized.QuestionID || '').trim()) {
+      normalized.QuestionID = cpos_pickField_(row, ['Question_ID', 'QuestionID', 'Question Id', 'question_id']) || cpos_guessQuestionId_(row);
+    }
+    if (!String(normalized.WhenQuestionID || '').trim()) {
+      normalized.WhenQuestionID = cpos_pickField_(row, ['When_Question_ID', 'WhenQuestionID', 'When Question ID']);
+    }
+    if (!String(normalized.CurrentQuestionID || '').trim()) {
+      normalized.CurrentQuestionID = cpos_pickField_(row, ['Current_Question_ID', 'CurrentQuestionID', 'Current Question ID']);
+    }
+    if (!String(normalized.SignalKey || '').trim()) {
+      normalized.SignalKey = cpos_pickField_(row, ['Signal_Key', 'SignalKey', 'Signal Key']);
+    }
+
+
       return normalized;
     });
   }
-  
+
   return data;
+}
+
+function normalizeFieldKey_(key) {
+  return String(key || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function cpos_pickField_(row, candidates) {
+  if (!row || typeof row !== 'object') return '';
+
+  for (let i = 0; i < candidates.length; i++) {
+    const c = candidates[i];
+    if (row[c] !== undefined && row[c] !== null && String(row[c]).trim() !== '') {
+      return row[c];
+    }
+  }
+
+  const normRow = {};
+  Object.keys(row).forEach(k => {
+    normRow[normalizeFieldKey_(k)] = row[k];
+  });
+
+  for (let i = 0; i < candidates.length; i++) {
+    const c = candidates[i];
+    const v = normRow[normalizeFieldKey_(c)];
+    if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+  }
+
+  return '';
+}
+
+function cpos_guessQuestionId_(row) {
+  if (!row || typeof row !== 'object') return '';
+  const vals = Object.values(row || {});
+  for (let i = 0; i < vals.length; i++) {
+    const t = String(vals[i] || '').trim();
+    if (/^Q_[A-Z0-9]+$/i.test(t)) return t;
+  }
+  return '';
 }
 
 
@@ -1091,19 +1273,19 @@ function testGetTables() {
 function debugQuestionColumns() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const qBank = ss.getSheetByName('CPOS_Q_Bank');  // ← Corrected name
-  
+
   if (!qBank) {
     Logger.log('❌ CPOS_Q_Bank sheet not found!');
     return;
   }
-  
+
   const headers = qBank.getRange(1, 1, 1, qBank.getLastColumn()).getValues()[0];
-  
+
   Logger.log('=== CPOS_Q_Bank Column Headers ===');
   headers.forEach((h, i) => {
-    Logger.log(`Column ${i+1}: "${h}"`);
+    Logger.log(`Column ${i + 1}: "${h}"`);
   });
-  
+
   Logger.log('\n=== First Data Row (Q_S001) ===');
   const firstRow = qBank.getRange(2, 1, 1, headers.length).getValues()[0];
   headers.forEach((h, i) => {
@@ -1113,13 +1295,13 @@ function debugQuestionColumns() {
 
 function finalValidationTest() {
   Logger.log('=== FINAL VALIDATION TEST ===\n');
-  
+
   // Test 1: CPOS Lite Tables
   const tables = getCPOSLiteTables();
   Logger.log('✅ Bounds: ' + tables.bounds.length + ' rows');
   Logger.log('✅ Desirability: ' + tables.desirability.length + ' rows');
   Logger.log('✅ Weights: ' + tables.weights.length + ' rows\n');
-  
+
   // Test 2: Questionnaire Config
   const config = getCPOSQuestionnaireConfig();
   Logger.log('✅ Q_Bank: ' + config.bank.length + ' questions');
@@ -1127,7 +1309,7 @@ function finalValidationTest() {
   Logger.log('✅ Derivation Rules: ' + config.derivationRules.length);
   Logger.log('✅ Routing Rules: ' + config.routingRules.length);
   Logger.log('✅ Signal Maps: ' + config.signalToLiteMap.length + '\n');
-  
+
   // Test 3: Question Text Access
   if (config.bank.length > 0) {
     const q = config.bank[0];
@@ -1139,7 +1321,7 @@ function finalValidationTest() {
     Logger.log('Is Active: ' + q.Is_Active);
     Logger.log('Is Required: ' + q.Is_Required + '\n');
   }
-  
+
   // Test 4: Sample Classification
   Logger.log('=== SAMPLE DATA CHECK ===');
   if (tables.bounds.length > 0) {
@@ -1150,7 +1332,7 @@ function finalValidationTest() {
     Logger.log('Range: ' + firstBound.Lower_Bound + ' - ' + firstBound.Upper_Bound);
     Logger.log('Unit: ' + firstBound.Unit);
   }
-  
+
   Logger.log('\n=== VALIDATION COMPLETE ===');
   Logger.log('Status: READY FOR DEPLOYMENT 🚀');
 }
@@ -1160,33 +1342,33 @@ function finalValidationTest() {
 function debugDerivationSheetColumns() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('CPOS_Q_Derivation_Rules');
-  
+
   if (!sheet) {
     Logger.log('❌ Sheet "CPOS_Q_Derivation_Rules" not found!');
     Logger.log('Available sheets: ' + ss.getSheets().map(s => s.getName()).join(', '));
     return;
   }
-  
+
   Logger.log('=== CPOS_Q_DERIVATION_RULES COLUMNS ===');
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  
+
   headers.forEach((h, i) => {
-    Logger.log(`Column ${i+1}: "${h}"`);
+    Logger.log(`Column ${i + 1}: "${h}"`);
   });
-  
+
   Logger.log('\n=== FIRST RULE (Row 2) ===');
   if (sheet.getLastRow() < 2) {
     Logger.log('❌ No data rows! Sheet is empty.');
     return;
   }
-  
+
   const firstRow = sheet.getRange(2, 1, 1, headers.length).getValues()[0];
   headers.forEach((h, i) => {
     const value = firstRow[i];
     const type = typeof value;
     Logger.log(`${h}: ${value} (${type})`);
   });
-  
+
   Logger.log('\n=== ROW COUNT ===');
   Logger.log('Total rows with data: ' + (sheet.getLastRow() - 1));
 }
@@ -1233,9 +1415,9 @@ function DEBUG_CheckDerivationRules() {
   samples.forEach(ruleId => {
     const rule = deriv.rows.find(r => String(r.Rule_ID) === ruleId);
     if (rule) {
-      Logger.log(ruleId + ': ' + rule.When_Question_ID + ' = ' + 
-                 rule.When_Value + ' → ' + rule.Then_Signal_Key + 
-                 ' = ' + rule.Then_Signal_Value);
+      Logger.log(ruleId + ': ' + rule.When_Question_ID + ' = ' +
+        rule.When_Value + ' → ' + rule.Then_Signal_Key +
+        ' = ' + rule.Then_Signal_Value);
     } else {
       Logger.log('❌ ' + ruleId + ': NOT FOUND');
     }
@@ -1272,10 +1454,10 @@ function DEBUG_CheckRoutingRules() {
   // Show sample rules
   Logger.log('\n═══ SAMPLE NEW RULES ═══');
   newRules.forEach(rule => {
-    Logger.log(rule.Route_ID + ': ' + rule.Current_Question_ID + 
-               ' → IF ' + rule.Condition_Signal_Key + ' = ' + 
-               rule.Condition_Value + ' → ' + rule.Route_Action + 
-               ' ' + rule.Next_Question_ID);
+    Logger.log(rule.Route_ID + ': ' + rule.Current_Question_ID +
+      ' → IF ' + rule.Condition_Signal_Key + ' = ' +
+      rule.Condition_Value + ' → ' + rule.Route_Action +
+      ' ' + rule.Next_Question_ID);
   });
 
   return { total: routing.rows.length, newRules: newRules.length };
@@ -1309,8 +1491,8 @@ function DEBUG_TestAWD_RiceFarmer() {
   Logger.log('ERW: ' + result.results['ERW'].eligibility + ' (EXPECT: NO)');
 
   const pass = result.results['AWD-CH₄'].eligibility === 'YES' &&
-               result.results['BIOCHAR'].eligibility === 'NO' &&
-               result.results['ERW'].eligibility === 'NO';
+    result.results['BIOCHAR'].eligibility === 'NO' &&
+    result.results['ERW'].eligibility === 'NO';
 
   Logger.log('\n' + (pass ? '✅ TEST PASSED' : '❌ TEST FAILED'));
   return result;
@@ -1393,7 +1575,7 @@ function DEBUG_TestBIOCHAR_User() {
   Logger.log('ERW: ' + result.results['ERW'].eligibility + ' (EXPECT: NO)');
 
   const pass = result.results['BIOCHAR'].eligibility === 'YES' &&
-               result.results['ERW'].eligibility === 'NO';
+    result.results['ERW'].eligibility === 'NO';
 
   Logger.log('\n' + (pass ? '✅ TEST PASSED' : '❌ TEST FAILED'));
   return result;
@@ -1423,7 +1605,7 @@ function DEBUG_TestERW_BasaltUser() {
   Logger.log('  Reason: ' + result.results['ERW'].reasons[0]);
 
   const pass = result.results['BIOCHAR'].eligibility === 'NO' &&
-               result.results['ERW'].eligibility === 'YES';
+    result.results['ERW'].eligibility === 'YES';
 
   Logger.log('\n' + (pass ? '✅ TEST PASSED' : '❌ TEST FAILED'));
   return result;
@@ -1541,10 +1723,10 @@ function DEBUG_RunAllBackendTests() {
 
 function DEBUG_TestQuestionnaireConfig() {
   Logger.log('=== TESTING getCPOSQuestionnaireConfig ===');
-  
+
   try {
     const result = getCPOSQuestionnaireConfig();
-    
+
     Logger.log('✅ Function executed successfully');
     Logger.log('');
     Logger.log('Result keys: ' + Object.keys(result).join(', '));
@@ -1556,7 +1738,7 @@ function DEBUG_TestQuestionnaireConfig() {
     Logger.log('  routingRules.length: ' + (result.routingRules?.length || 0));
     Logger.log('  signalToLiteMap.length: ' + (result.signalToLiteMap?.length || 0));
     Logger.log('');
-    
+
     if (result.bank && result.bank.length > 0) {
       Logger.log('✅ FIRST QUESTION:');
       Logger.log(JSON.stringify(result.bank[0], null, 2));
@@ -1564,14 +1746,14 @@ function DEBUG_TestQuestionnaireConfig() {
       Logger.log('❌ NO QUESTIONS FOUND!');
       Logger.log('');
       Logger.log('🔧 CHECK YOUR SHEET NAMES:');
-      
+
       const ss = SpreadsheetApp.getActiveSpreadsheet();
       const allSheets = ss.getSheets().map(s => s.getName());
-      
+
       Logger.log('');
       Logger.log('📋 ALL SHEETS IN SPREADSHEET:');
       allSheets.forEach(name => Logger.log('  - ' + name));
-      
+
       Logger.log('');
       Logger.log('✅ REQUIRED SHEET NAMES:');
       Logger.log('  - CPOS_Q_Bank');
@@ -1580,7 +1762,7 @@ function DEBUG_TestQuestionnaireConfig() {
       Logger.log('  - CPOS_Q_RoutingRules');
       Logger.log('  - CPOS_Q_SignaltoLiteFactorMap');
     }
-    
+
   } catch (error) {
     Logger.log('❌ ERROR: ' + error.message);
     Logger.log('Stack: ' + error.stack);
@@ -1589,15 +1771,15 @@ function DEBUG_TestQuestionnaireConfig() {
 
 function DEBUG_CheckNormalizeExists() {
   Logger.log('=== CHECKING IF NORMALIZE FUNCTION EXISTS ===');
-  
+
   try {
     // Try to call the function with dummy data
     const testData = [
       { Question_ID: 'TEST', Question_Text_EN: 'Test Question' }
     ];
-    
+
     const result = normalizeQuestionnaireFields(testData);
-    
+
     Logger.log('✅ Function exists and executed!');
     Logger.log('');
     Logger.log('Input:');
@@ -1605,7 +1787,7 @@ function DEBUG_CheckNormalizeExists() {
     Logger.log('');
     Logger.log('Output:');
     Logger.log(JSON.stringify(result[0], null, 2));
-    
+
     if (result[0].QuestionID) {
       Logger.log('');
       Logger.log('✅ Normalization is working!');
@@ -1615,7 +1797,7 @@ function DEBUG_CheckNormalizeExists() {
       Logger.log('❌ Normalization NOT working!');
       Logger.log('   Output still has: ' + Object.keys(result[0]).join(', '));
     }
-    
+
   } catch (error) {
     Logger.log('❌ ERROR: Function does not exist or has error!');
     Logger.log('   ' + error.message);
@@ -1628,22 +1810,22 @@ function DEBUG_CheckNormalizeExists() {
 
 function DEBUG_TestActualReturn() {
   Logger.log('=== TESTING ACTUAL RETURN VALUES ===');
-  
+
   const result = getCPOSQuestionnaireConfig();
-  
+
   if (!result.bank || result.bank.length === 0) {
     Logger.log('❌ No questions returned!');
     return;
   }
-  
+
   const firstQ = result.bank[0];
-  
+
   Logger.log('📋 FIELD CHECK:');
   Logger.log('');
   Logger.log('Has QuestionID (normalized)?', !!firstQ.QuestionID);
   Logger.log('Has Question_ID (old)?', !!firstQ.Question_ID);
   Logger.log('');
-  
+
   if (firstQ.QuestionID) {
     Logger.log('✅ FIELDS ARE NORMALIZED!');
     Logger.log('   QuestionID: ' + firstQ.QuestionID);
@@ -1654,7 +1836,7 @@ function DEBUG_TestActualReturn() {
     Logger.log('');
     Logger.log('This means normalizeQuestionnaireFields() is NOT being called in getCPOSQuestionnaireConfig()');
   }
-  
+
   Logger.log('');
   Logger.log('All keys in first question:');
   Object.keys(firstQ).forEach(k => Logger.log('  - ' + k));
@@ -1664,25 +1846,25 @@ function DEBUG_TestActualReturn() {
 function FINAL_TEST_DETAILED() {
   Logger.log('=== DETAILED FINAL TEST ===');
   Logger.log('');
-  
+
   const result = getCPOSQuestionnaireConfig();
-  
+
   Logger.log('Result structure:');
   Logger.log('  result.ok: ' + result.ok);
   Logger.log('  result.bank length: ' + (result.bank ? result.bank.length : 0));
   Logger.log('');
-  
+
   if (!result.bank || result.bank.length === 0) {
     Logger.log('❌ No questions in bank!');
     return;
   }
-  
+
   const firstQ = result.bank[0];
-  
+
   Logger.log('First question object:');
   Logger.log(JSON.stringify(firstQ, null, 2));
   Logger.log('');
-  
+
   Logger.log('Field check:');
   Logger.log('  typeof firstQ.QuestionID: ' + typeof firstQ.QuestionID);
   Logger.log('  firstQ.QuestionID value: "' + firstQ.QuestionID + '"');
@@ -1691,10 +1873,10 @@ function FINAL_TEST_DETAILED() {
   Logger.log('  typeof firstQ.Question_ID: ' + typeof firstQ.Question_ID);
   Logger.log('  firstQ.Question_ID value: "' + (firstQ.Question_ID || 'undefined') + '"');
   Logger.log('');
-  
+
   const hasNormalized = !!firstQ.QuestionID;
   const hasOld = !!firstQ.Question_ID;
-  
+
   if (hasNormalized && !hasOld) {
     Logger.log('✅✅✅ PERFECT! Normalization working! ✅✅✅');
     Logger.log('');
@@ -1708,3 +1890,4 @@ function FINAL_TEST_DETAILED() {
     Logger.log('❌ Neither field name present - data corrupted?');
   }
 }
+
