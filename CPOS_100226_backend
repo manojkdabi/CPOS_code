@@ -2387,7 +2387,7 @@ function TEST_VERIFY_SETUP() {
   const empty = [];
   const ok = [];
   
-  requiredSheets.forEach(name => {
+  for (const name of requiredSheets) {
     const sheet = ss.getSheetByName(name);
     if (!sheet) {
       missing.push(name);
@@ -2399,19 +2399,25 @@ function TEST_VERIFY_SETUP() {
         ok.push(name + ' (' + (lastRow - 1) + ' rows)');
       }
     }
-  });
+  }
   
   Logger.log('✅ SHEETS WITH DATA:');
-  ok.forEach(s => Logger.log('  - ' + s));
+  for (const s of ok) {
+    Logger.log('  - ' + s);
+  }
   
   if (empty.length > 0) {
     Logger.log('\n⚠️  EMPTY SHEETS (only headers):');
-    empty.forEach(s => Logger.log('  - ' + s));
+    for (const s of empty) {
+      Logger.log('  - ' + s);
+    }
   }
   
   if (missing.length > 0) {
     Logger.log('\n❌ MISSING SHEETS:');
-    missing.forEach(s => Logger.log('  - ' + s));
+    for (const s of missing) {
+      Logger.log('  - ' + s);
+    }
   }
   
   // Test API functions
@@ -2442,7 +2448,9 @@ function TEST_VERIFY_SETUP() {
     
     if (qResult.warnings && qResult.warnings.length > 0) {
       Logger.log('\n  Warnings:');
-      qResult.warnings.forEach(w => Logger.log('    - ' + w));
+      for (const w of qResult.warnings) {
+        Logger.log('    - ' + w);
+      }
     }
   } catch (e) {
     Logger.log('❌ getCPOSQuestionnaireConfig() FAILED: ' + e);

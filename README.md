@@ -76,7 +76,8 @@ When you run initialization, the following sheets are created with sample data:
 - Check that data rows were added to each sheet (not just headers)
 
 **Issue: Start button still frozen**
-- Make sure you have at least 3 questions in CPOS_Q_Bank
+- The system requires at least 1 question with valid options to enable the questionnaire
+- Make sure you have questions in CPOS_Q_Bank with Is_Active = TRUE
 - Verify CPOS_Lite_Bounds has data rows
 - Check browser console for specific errors
 
