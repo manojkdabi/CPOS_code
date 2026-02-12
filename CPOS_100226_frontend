@@ -5048,7 +5048,12 @@ console.log('[CPOS-Lite] Lite tables picked shapes:', {
         safeStatus_(true, `Ready • Factors=${nFactors} • Questionnaire unavailable`);
         const qText = byId_('qQuestionText');
         const btn = byId_('btnQStart');
-        if (qText) qText.textContent = 'Questionnaire config function not available.';
+        if (qText) {
+          qText.innerHTML = 'Questionnaire config function not available.<br><br>' +
+            '<small style="color:#666">The questionnaire tables may be missing. ' +
+            'The system should auto-initialize them on first load. ' +
+            'If this persists, check the README for manual initialization steps.</small>';
+        }
         if (btn) btn.disabled = true;
 
       } else {
@@ -5083,7 +5088,12 @@ console.log('[CPOS][Q] keys =', Object.keys(qRes || {}));
 
           const qText = byId_('qQuestionText');
           const btn = byId_('btnQStart');
-          if (qText) qText.textContent = 'Questionnaire config not available (bad response).';
+          if (qText) {
+            qText.innerHTML = 'Questionnaire config not available (bad response).<br><br>' +
+              '<small style="color:#666">The questionnaire tables may be empty or misconfigured. ' +
+              'Check browser console for details. ' +
+              'See README for initialization instructions.</small>';
+          }
           if (btn) btn.disabled = true;
 
         } else {
