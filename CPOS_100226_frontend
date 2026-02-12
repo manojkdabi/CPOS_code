@@ -4725,7 +4725,25 @@ async function getCPOSLiteTables() {
   return await gsRun_('getCPOSLiteTables');
 }
 async function getCPOSQuestionnaireConfig() {
-  return await gsRun_('getCPOSQuestionnaireConfig');
+    const candidates = [
+    'getCPOSQuestionnaireConfig',
+    'srvr_getCPOSQuestionnaireConfig'
+  ];
+
+  let lastErr = null;
+  for (const fnName of candidates) {
+    try {
+      const res = await gsRun_(fnName);
+      if (res !== null && res !== undefined) return res;
+      console.warn(`[CPOS][Q] ${fnName} returned null/undefined; trying fallback.`);
+    } catch (e) {
+      lastErr = e;
+      console.warn(`[CPOS][Q] ${fnName} failed:`, e);
+    }
+  }
+
+  if (lastErr) throw lastErr;
+  return null;
 }
 
 function ensureLiteRowKeys_(r) {
@@ -5034,18 +5052,27 @@ console.log('[CPOS-Lite] Lite tables picked shapes:', {
         if (btn) btn.disabled = true;
 
       } else {
-        const qRes = await getCPOSQuestionnaireConfig();
+        const qRaw = await getCPOSQuestionnaireConfig();
+        const qRes0 = coerceObj_(qRaw);
 
-        const qRes0 = coerceObj_(qRes);
+        const qRes = pickAny_(qRes0, [
+          o => o?.config,
+          o => o?.data,
+          o => o?.payload,
+          o => o?.result,
+          o => o
+        ]) || {};
+
 console.log('[CPOS][Q] getCPOSQuestionnaireConfig() raw =', qRes0);
-console.log('[CPOS][Q] keys =', Object.keys(qRes0 || {}));
+console.log('[CPOS][Q] keys =', Object.keys(qRes || {}));
 
-
-        // ✅ ACCEPT ok:true OR success:true
-        const qOk = !!(qRes && (qRes.ok === true || qRes.success === true));
+        // ✅ ACCEPT ok:true OR success:true OR implied success by presence of arrays
+        const hasAnyTable = ['bank','options','derivationRules','routingRules','signalToLiteMap','bounds','liteBounds']
+          .some(k => Array.isArray(qRes?.[k]));
+        const qOk = !!(qRes && (qRes.ok === true || qRes.success === true || hasAnyTable));
 
         if (!qOk) {
-          console.warn('[CPOS][Q] Bad questionnaire response:', qRes);
+          console.warn('[CPOS][Q] Bad questionnaire response:', qRes0);
           CPOSL.q.available = false;
 
           if (!CPOSL.qDebug) CPOSL.qDebug = {};
