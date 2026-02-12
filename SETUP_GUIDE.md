@@ -179,6 +179,12 @@ The auto-initialization was updated to detect empty sheets and re-populate them.
 ### Issue: "No active spreadsheet" error
 **Solution:** Make sure your script is container-bound (attached to a spreadsheet), not standalone
 
+**Alternative:** If you need to use a standalone script (not recommended), set the spreadsheet ID:
+1. Find your spreadsheet ID - see [HOW_TO_FIND_SPREADSHEET_ID.md](HOW_TO_FIND_SPREADSHEET_ID.md)
+2. In the backend code, replace `'PASTE_YOUR_SPREADSHEET_ID_HERE'` with your actual ID
+3. The ID is the long string in your spreadsheet URL between `/d/` and `/edit`
+4. Example: `const CPOS_SS_ID = '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms';`
+
 ### Issue: Permission denied
 **Solution:** When running for the first time, you'll need to authorize the script:
 1. Click "Review Permissions"

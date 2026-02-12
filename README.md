@@ -86,6 +86,7 @@ When you run initialization, the following sheets are created with sample data:
 **Issue: "No active spreadsheet" error**
 - Solution: Make sure the script is bound to a spreadsheet (container-bound script)
 - Or set `CPOS_SS_ID` in the backend code to your spreadsheet ID
+- **Need help finding your spreadsheet ID?** See [HOW_TO_FIND_SPREADSHEET_ID.md](HOW_TO_FIND_SPREADSHEET_ID.md)
 
 **Issue: Questionnaire still shows as unavailable**
 - Check the browser console for error messages

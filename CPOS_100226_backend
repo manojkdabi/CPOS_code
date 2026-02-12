@@ -52,6 +52,21 @@ function manualInitializeAllTables() {
 
 
 // ✅ SET THIS to your CPOS spreadsheet ID (the long string in the URL)
+// 
+// HOW TO FIND YOUR SPREADSHEET ID:
+// 1. Open your Google Spreadsheet in a browser
+// 2. Look at the URL in the address bar. It looks like:
+//    https://docs.google.com/spreadsheets/d/1a2B3c4D5e6F7g8H9i0J/edit#gid=0
+//                                        ^^^^^^^^^^^^^^^^^^^^
+//                                        This is your Spreadsheet ID
+// 3. Copy the long string between "/d/" and "/edit"
+// 4. Paste it below, replacing 'PASTE_YOUR_SPREADSHEET_ID_HERE'
+//
+// Example: const CPOS_SS_ID = '1a2B3c4D5e6F7g8H9i0J1K2L3M4N5O6P7Q8R9S0T';
+//
+// IMPORTANT: If you're using a container-bound script (recommended), 
+// you DON'T need to set this. The system will use getActiveSpreadsheet().
+//
 const CPOS_SS_ID = 'PASTE_YOUR_SPREADSHEET_ID_HERE';
 
 function cpos_getSS_() {
