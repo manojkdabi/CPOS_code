@@ -963,6 +963,23 @@
       }
     }
 
+    function wireLanguageToggle_() {
+  const en = document.getElementById('langEN');
+  const hi = document.getElementById('langHI');
+  if (!en || !hi) return;
+
+  const apply = () => {
+    CPOSL.language = hi.checked ? 'HI' : 'EN';
+    // Re-render current question immediately (if questionnaire already started)
+    if (CPOSL?.qState?.current) renderQuestionUI_();
+  };
+
+  en.addEventListener('change', apply);
+  hi.addEventListener('change', apply);
+  apply(); // set initial state
+}
+
+
     // ---------------------------
     // CPOS-Lite state + indexes
     // ---------------------------
@@ -1012,6 +1029,62 @@
       }
 
     };
+
+
+// Keep one authoritative CPOSL reference in THIS frame only (Apps Script iframe-safe).
+// IMPORTANT: Do NOT touch top/parent — they are often cross-origin in GAS HTML service.
+function syncCPOSLRealms_() {
+  try { if (typeof globalThis !== 'undefined') globalThis.CPOSL = CPOSL; } catch (_) {}
+  try { if (typeof window !== 'undefined') window.CPOSL = CPOSL; } catch (_) {}
+  // ❌ removed: top.CPOSL / parent.CPOSL (can throw SecurityError)
+}
+
+function isMapLike_(m) {
+  return !!m && typeof m.get === 'function' && typeof m.set === 'function' && typeof m.size === 'number';
+}
+
+// Diagnostic logger that is GUARANTEED not to touch cross-origin frames.
+// It logs only local-frame facts + index readiness.
+function logQDiag_(source, extra) {
+  // Ensure CPOSL is reachable from window/globalThis in the same frame.
+  syncCPOSLRealms_();
+
+  try {
+    if (!CPOSL.qDebug) CPOSL.qDebug = {};
+
+    const safe = {
+      source,
+      ts: new Date().toISOString(),
+
+      // ✅ Local frame only (safe)
+      inIframe: (typeof window !== 'undefined' && typeof window.parent !== 'undefined') ? (window !== window.parent) : null,
+      sameRefWindow: (typeof window !== 'undefined') ? (window.CPOSL === CPOSL) : null,
+
+      // Bank / idx diagnostics
+      bankLen: Array.isArray(CPOSL.q?.bank)
+        ? CPOSL.q.bank.length
+        : (Array.isArray(CPOSL.q?.questionBank) ? CPOSL.q.questionBank.length : 0),
+
+      idxExists: !!CPOSL.q?.idx,
+      idxBankSize: (CPOSL.q?.idx?.qBankById && typeof CPOSL.q.idx.qBankById.size === 'number')
+        ? CPOSL.q.idx.qBankById.size
+        : null,
+
+      startCount: Array.isArray(CPOSL.q?.idx?.startQuestions)
+        ? CPOSL.q.idx.startQuestions.length
+        : null,
+
+      qAvailable: CPOSL.q?.available,
+      lastDisablePath: CPOSL.qDebug.lastDisablePath || null
+    };
+
+    console.log('[CPOS][Q][DIAG]', Object.assign(safe, extra || {}));
+  } catch (e) {
+    // Never allow diagnostics to crash init/UI
+    console.warn('[CPOS][Q][DIAG] logQDiag_ failed (suppressed):', e);
+  }
+}
+ 
 
 
 // 👉 PASTE CONSISTENCY_RULES HERE 👈
@@ -1659,6 +1732,66 @@ const CONSISTENCY_RULES = [
       });
     }
 
+
+// ---------------------------
+// ✅ Questionnaire config normalizer (CRITICAL)
+// Put this right after getCPOSQuestionnaireConfig()
+// ---------------------------
+function applyQuestionnaireConfig_(rawRes) {
+  // Some backends wrap payload in {config:{...}} or {data:{...}} etc.
+  const root = (rawRes && typeof rawRes === 'object') ? rawRes : {};
+  const res =
+    (root.config && typeof root.config === 'object') ? root.config :
+    (root.data && typeof root.data === 'object') ? root.data :
+    (root.payload && typeof root.payload === 'object') ? root.payload :
+    (root.q && typeof root.q === 'object') ? root.q :
+    root;
+
+  const pickArr = (keys) => {
+    for (const k of keys) {
+      const v = res[k];
+      if (Array.isArray(v)) return v;
+    }
+    return null;
+  };
+
+  // Try multiple possible property names (you can add more if your backend uses different keys)
+  const bank = pickArr(['bank','qBank','questionBank','bankRows','Bank','CPOS_Q_Bank'])
+            || (Array.isArray(res.bankFirst) ? res.bankFirst : []); // fallback only
+
+  const options = pickArr(['options','qOptions','optionRows','CPOS_Q_Options','CPOS_Q_OPTIONS']) || [];
+  const derivationRules = pickArr(['derivationRules','derivRules','qDerivationRules','CPOS_Q_Derivation_Rules']) || [];
+  const routingRules = pickArr(['routingRules','routes','qRoutes','routing','CPOS_Q_Routing_Rules','CPOS_Q_Routes']) || [];
+  const signalToLiteMap = pickArr(['signalToLiteMap','signalMap','qSignalMap','CPOS_Q_Signal_to_LiteFactor_Map']) || [];
+
+  // Apply to canonical locations your engine reads
+  if (!CPOSL.q) CPOSL.q = {};
+  CPOSL.q.bank = bank;
+  CPOSL.q.options = options;
+  CPOSL.q.derivationRules = derivationRules;
+  CPOSL.q.routingRules = routingRules;
+  CPOSL.q.signalToLiteMap = signalToLiteMap;
+
+  // Optional metadata (safe)
+  CPOSL.q.meta = res.meta || root.meta || {};
+
+  // Diagnostics (THIS is what your UI gating needs to see)
+  console.log('[CPOS][Q] applyQuestionnaireConfig_', {
+    bank: Array.isArray(bank) ? bank.length : 0,
+    options: Array.isArray(options) ? options.length : 0,
+    deriv: Array.isArray(derivationRules) ? derivationRules.length : 0,
+    routes: Array.isArray(routingRules) ? routingRules.length : 0,
+    signalMap: Array.isArray(signalToLiteMap) ? signalToLiteMap.length : 0,
+    keys: Object.keys(res || {})
+  });
+
+  // If you only got bankFirst (15 rows), you’ll still “start”, but questionnaire is incomplete.
+  if ((!Array.isArray(res.bank) && !Array.isArray(res.qBank) && !Array.isArray(res.questionBank)) && Array.isArray(res.bankFirst)) {
+    console.warn('[CPOS][Q] Backend did NOT send full bank array; using bankFirst fallback only. Fix backend return contract.');
+  }
+}
+
+
     function getQField_(row, candidates) {
       if (!row || typeof row !== 'object') return '';
       for (const c of candidates) {
@@ -1681,98 +1814,145 @@ const CONSISTENCY_RULES = [
     // ---------------------------
     // Build indexes from 3 sheets
     // ---------------------------
-    function buildIndexes_() {
-      CPOSL.idx.boundsByVar = new Map();
-      CPOSL.idx.factorsByCat = new Map();
-      CPOSL.idx.desirByVarPathClass = new Map();
-      CPOSL.idx.weightByVarPath = new Map();
+  function buildIndexes_() {
 
-      for (const r of (CPOSL.data.bounds || [])) {
-        const varNameRaw = String(r.Variable_Name || '').trim();
-        const varKey = normKey_(varNameRaw);
-        if (!varKey) continue;
+  syncCPOSLRealms_(); // ensures globalThis.CPOSL points to the real CPOSL object  
+  // Harden: always resolve CPOSL from global realm
+  const G = (typeof globalThis !== 'undefined') ? globalThis : window;
+const CP = (G && G.CPOSL) ? G.CPOSL : CPOSL; // fallback to lexical CPOSL
+  CPOSL.idx = CPOSL.idx || {};
 
-        const factorCategoryRaw = String(r.Factor_Category || 'Other').trim();
-        const factorCategoryKey = normKey_(factorCategoryRaw);
-        const factorDisplay = String(r.Factor_Display_Name || varNameRaw).trim();
+  const bounds = Array.isArray(CPOSL.data?.bounds) ? CPOSL.data.bounds : [];
+  const desir  = Array.isArray(CPOSL.data?.desirability) ? CPOSL.data.desirability : [];
+  const wts    = Array.isArray(CPOSL.data?.weights) ? CPOSL.data.weights : [];
 
-        const f = CPOSL.idx.boundsByVar.get(varKey) || {
-          Variable_Name: varKey,
-          Variable_Name_Display: varNameRaw || varKey,
-          Factor_ID: normKey_(r.Factor_ID || ''),
-          Factor_Category: factorCategoryKey,
-          Factor_Category_Display: factorCategoryRaw || factorCategoryKey,
-          Factor_Display_Name: factorDisplay || varKey,
-          Unit: String(r.Unit || '').trim(),
-          classes: []
-        };
+  const norm = (s) => String(s ?? '').trim();
 
-        const classLabelRaw = String(r.Class_Label || '').trim();
-        const classKey = normKey_(classLabelRaw);
-        if (!classKey) continue;
-
-        f.classes.push({
-          Class_Order: toNum(r.Class_Order),
-          Class_Label: classKey,
-          Class_Label_Display: classLabelRaw || classKey,
-          Lower_Bound: toNum(r.Lower_Bound),
-          Upper_Bound: toNum(r.Upper_Bound),
-          Lower_Inclusive: toBool(r.Lower_Inclusive),
-          Upper_Inclusive: toBool(r.Upper_Inclusive)
-        });
-
-        CPOSL.idx.boundsByVar.set(varKey, f);
+  // Generic picker: returns first non-empty value found among key candidates
+  const pick_ = (row, keys) => {
+    if (!row || typeof row !== 'object') return '';
+    for (const k of keys) {
+      if (row[k] !== undefined && row[k] !== null) {
+        const v = norm(row[k]);
+        if (v) return v;
       }
-
-      for (const [, f] of CPOSL.idx.boundsByVar.entries()) {
-        f.classes.sort((a, b) => (a.Class_Order ?? 0) - (b.Class_Order ?? 0));
-
-        const catKey = f.Factor_Category || 'Other';
-        if (!CPOSL.idx.factorsByCat.has(catKey)) {
-          CPOSL.idx.factorsByCat.set(catKey, { label: f.Factor_Category_Display || catKey, factors: [] });
-        }
-        CPOSL.idx.factorsByCat.get(catKey).factors.push(f);
-      }
-
-      for (const entry of CPOSL.idx.factorsByCat.values()) {
-        entry.factors.sort((a, b) => (a.Factor_Display_Name || '').localeCompare(b.Factor_Display_Name || ''));
-      }
-
-      for (const r of (CPOSL.data.desirability || [])) {
-        const varKey = normKey_(r.Variable_Name);
-        const pathway = normPathway_(r.Pathway);
-        const classKey = normKey_(r.Class_Label);
-        if (!varKey || !pathway || !classKey) continue;
-
-        const d = toNum(r.Desirability_0_1);
-        if (!Number.isFinite(d)) continue;
-
-        const key = `${varKey}||${pathway}||${classKey}`;
-        CPOSL.idx.desirByVarPathClass.set(key, {
-          d,
-          shape: String(r.Shape || '').trim(),
-          ctx: String(r.Pathway_Context || '').trim()
-        });
-      }
-
-      for (const r of (CPOSL.data.weights || [])) {
-        const varKey = normKey_(r.Variable_Name);
-        const pathway = normPathway_(r.Pathway);
-        if (!varKey || !pathway) continue;
-
-        const w = toNum(r.Sensitivity_Weight_0_10);
-        if (!Number.isFinite(w)) continue;
-
-        const key = `${varKey}||${pathway}`;
-        CPOSL.idx.weightByVarPath.set(key, w);
-      }
-
-      console.log('[CPOS] buildIndexes', {
-        boundsVars: CPOSL.idx.boundsByVar.size,
-        desirKeys: CPOSL.idx.desirByVarPathClass.size,
-        weightKeys: CPOSL.idx.weightByVarPath.size
-      });
     }
+    return '';
+  };
+
+  // Numeric parse that tolerates strings
+  const num_ = (v) => {
+    if (v === null || v === undefined) return NaN;
+    if (typeof v === 'number') return v;
+    const s = String(v).trim();
+    if (!s) return NaN;
+    const x = Number(s.replace(/,/g, ''));
+    return isNaN(x) ? NaN : x;
+  };
+
+  // ------------------------
+  // Bounds index: Variable -> rows (sorted by Class_Order)
+  // ------------------------
+  const boundsByVar = new Map();
+
+  for (const r of bounds) {
+    const varName = pick_(r, [
+      'Variable_Name', 'VariableName', 'variable_name',
+      'Variable Name', 'Variable', 'Var', 'var_name'
+    ]);
+    if (!varName) continue;
+
+    const varKey = normKey_(varName);
+if (!boundsByVar.has(varKey)) boundsByVar.set(varKey, []);
+boundsByVar.get(varKey).push(r);
+
+  }
+
+  for (const [k, list] of boundsByVar.entries()) {
+    list.sort((a, b) => {
+      const oa = num_(a.Class_Order ?? a.ClassOrder ?? a.class_order);
+      const ob = num_(b.Class_Order ?? b.ClassOrder ?? b.class_order);
+      return (isNaN(oa) ? 0 : oa) - (isNaN(ob) ? 0 : ob);
+    });
+  }
+
+  // ------------------------
+  // Desirability index: Var|Class|Pathway -> d (0..1)
+  // ------------------------
+  const desirIdx = new Map();
+
+  for (const r of desir) {
+    const varName = pick_(r, [
+      'Variable_Name', 'VariableName', 'variable_name',
+      'Variable Name', 'Variable', 'Var', 'var_name'
+    ]);
+    const cls = pick_(r, [
+      'Class_Label', 'ClassLabel', 'class_label',
+      'Class', 'Class Label'
+    ]);
+    const pw = pick_(r, [
+      'Pathway', 'pathway', 'Path', 'pathway_name'
+    ]);
+
+    const dRaw = (r?.Desirability_0_1 ?? r?.Desirability01 ?? r?.Desirability ?? r?.desirability);
+    const dNum = num_(dRaw);
+
+    if (!varName || !cls || !pw || isNaN(dNum)) continue;
+    desirIdx.set(`${varName}|${cls}|${pw}`, Math.max(0, Math.min(1, dNum)));
+  }
+
+  // ------------------------
+  // Weight index: Var|Pathway -> w (0..10)
+  // ------------------------
+  const wIdx = new Map();
+
+  for (const r of wts) {
+    const varName = pick_(r, [
+      'Variable_Name', 'VariableName', 'variable_name',
+      'Variable Name', 'Variable', 'Var', 'var_name'
+    ]);
+    const pw = pick_(r, [
+      'Pathway', 'pathway', 'Path', 'pathway_name'
+    ]);
+
+    const wRaw = (r?.Sensitivity_Weight_0_10 ?? r?.SensitivityWeight010 ?? r?.Sensitivity_Weight ?? r?.weight ?? r?.Weight);
+    const wNum = num_(wRaw);
+
+    if (!varName || !pw || isNaN(wNum)) continue;
+    wIdx.set(`${varName}|${pw}`, Math.max(0, Math.min(10, wNum)));
+  }
+
+  CPOSL.idx.boundsByVar = boundsByVar;
+  CPOSL.idx.desirIdx = desirIdx;
+  CPOSL.idx.wIdx = wIdx;
+
+  // Extra diagnostics when indexes are unexpectedly empty
+  const diag = {
+    boundsRows: bounds.length,
+    desirRows: desir.length,
+    weightRows: wts.length,
+    boundsVars: boundsByVar.size,
+    desirKeys: desirIdx.size,
+    weightKeys: wIdx.size
+  };
+
+  console.log('[CPOS] buildIndexes', diag);
+
+  if (bounds.length && boundsByVar.size === 0) {
+    console.warn('[CPOS] Bounds rows present but no Variable_Name parsed. Sample keys:', Object.keys(bounds[0] || {}));
+    console.warn('[CPOS] Bounds sample row:', bounds[0] || null);
+  }
+  if (desir.length && desirIdx.size === 0) {
+    console.warn('[CPOS] Desirability rows present but no keys built. Sample keys:', Object.keys(desir[0] || {}));
+    console.warn('[CPOS] Desirability sample row:', desir[0] || null);
+  }
+  if (wts.length && wIdx.size === 0) {
+    console.warn('[CPOS] Weight rows present but no keys built. Sample keys:', Object.keys(wts[0] || {}));
+    console.warn('[CPOS] Weight sample row:', wts[0] || null);
+  }
+}
+
+
 
     // ---------------------------
     // Questionnaire indexes
@@ -1795,11 +1975,15 @@ function buildQuestionnaireIndexes_() {
   idx.qSignalMapByKey = new Map();
   idx.startQuestions = [];
 
-  const bank = Array.isArray(CPOSL.q.bank) ? CPOSL.q.bank : [];
+  const bank = Array.isArray(CPOSL.q.bank)
+    ? CPOSL.q.bank
+    : (Array.isArray(CPOSL.q.questionBank) ? CPOSL.q.questionBank : []);
   const options = Array.isArray(CPOSL.q.options) ? CPOSL.q.options : [];
   const deriv = Array.isArray(CPOSL.q.derivationRules) ? CPOSL.q.derivationRules : [];
   const routes = Array.isArray(CPOSL.q.routingRules) ? CPOSL.q.routingRules : [];
-  const signalMaps = Array.isArray(CPOSL.q.signalToLiteMap) ? CPOSL.q.signalToLiteMap : [];
+  const signalMaps = Array.isArray(CPOSL.q.signalToLiteMap)
+    ? CPOSL.q.signalToLiteMap
+    : (Array.isArray(CPOSL.q.signalMap) ? CPOSL.q.signalMap : []);
 
   // Helper to read a field from row allowing multiple key variants
   const get = (row, keys, fallback = '') => {
@@ -1831,6 +2015,7 @@ function buildQuestionnaireIndexes_() {
   // ---- 1) Bank: qBankById + compute startQuestions (per mode) ----
   const rowsByMode = new Map(); // mode -> array of rows (active)
 
+  let order = 0;
   for (const r of bank) {
     const qid = normStr(get(r, ['Question_ID','QuestionID','Question_Id','question_id','questionId'], ''));
     if (!qid) continue;
@@ -1858,6 +2043,7 @@ r.__qid = qid;
 r.__mode = mode;
 r.__group = group;
 r.__seq = seq;
+r.__order = order++;
 
 
     idx.qBankById.set(qid, r);
@@ -1867,17 +2053,47 @@ r.__seq = seq;
   }
 
   const curMode = normUp(CPOSL.qState.mode || 'BASIC');
-  const modeRows = rowsByMode.get(curMode) || [];
+  let modeRows = rowsByMode.get(curMode) || [];
 
-  // Preferred: explicit START group else min sequence
+  // If mode does not exist in bank, fallback to all active rows (backward compatibility).
+  if (!modeRows.length) {
+    modeRows = Array.from(idx.qBankById.values());
+  }
+
+  const bySeqThenOrder = (a, b) => {
+    if (a.__seq !== b.__seq) return a.__seq - b.__seq;
+    return a.__order - b.__order;
+  };
+
+  // Preferred: explicit START group else min sequence (without requiring START)
+  let minSeqForMode = null;
   const explicitStarts = modeRows.filter(r => r.__group === 'START');
   if (explicitStarts.length > 0) {
-    explicitStarts.sort((a, b) => a.__seq - b.__seq);
+    explicitStarts.sort(bySeqThenOrder);
     idx.startQuestions = explicitStarts.map(r => r.__qid);
+    minSeqForMode = explicitStarts.length ? explicitStarts[0].__seq : null;
   } else if (modeRows.length > 0) {
-    modeRows.sort((a, b) => a.__seq - b.__seq);
+    modeRows.sort(bySeqThenOrder);
     const minSeq = modeRows[0].__seq;
-    idx.startQuestions = modeRows.filter(r => r.__seq === minSeq).map(r => r.__qid);
+    minSeqForMode = Number.isFinite(minSeq) ? minSeq : null;
+    if (Number.isFinite(minSeq)) {
+      idx.startQuestions = modeRows.filter(r => r.__seq === minSeq).map(r => r.__qid);
+    } else {
+      // Sequence missing/non-numeric in this mode: fallback to first inserted active question.
+      idx.startQuestions = [modeRows[0].__qid];
+    }
+  }
+
+  // Final deterministic safety net: if still empty, pick first active row by mode then global.
+  if (!idx.startQuestions.length && idx.qBankById.size > 0) {
+    const allRows = Array.from(idx.qBankById.values());
+    const curModeRows = allRows.filter(r => normUp(r.__mode || r.Mode) === curMode);
+    const pool = curModeRows.length ? curModeRows : allRows;
+    pool.sort(bySeqThenOrder);
+    if (pool.length) {
+      idx.startQuestions = [pool[0].__qid || pool[0].Question_ID];
+      if (minSeqForMode === null && Number.isFinite(pool[0].__seq)) minSeqForMode = pool[0].__seq;
+    }
   }
 
   // ---- 2) Options: group by Question_ID ----
@@ -1922,6 +2138,15 @@ r.__seq = seq;
     mode: curMode,
     startSample: idx.startQuestions.slice(0, 3)
   });
+
+  // Self-check log (keep while validating Start flow)
+  logQDiag_('buildQuestionnaireIndexes_', {
+    currentMode: curMode,
+    activeBankRows: idx.qBankById.size,
+    activeModeRows: modeRows.length,
+    minSequence: minSeqForMode,
+    startQuestions: idx.startQuestions.slice(0, 3)
+  });
     
   // ✅ Mark questionnaire data as usable for UI gating
   if (!CPOSL.q) CPOSL.q = {};
@@ -1931,8 +2156,6 @@ r.__seq = seq;
   console.log('[DBG] firstStartRow:', idx.startQuestions[0] ? idx.qBankById.get(idx.startQuestions[0]) : null);
 
 }
-
-
 
 
 
@@ -2539,48 +2762,47 @@ function validateAnswer_(answerRaw) {
 
 function applyDerivationsForQuestion_(qid, answerRaw) {
   const rules = CPOSL.q.idx.qDerivByWhenQ.get(qid) || [];
-  rules.forEach(rule => {
-    if (!toBool(rule.Is_Active)) return;
 
-    const op = String(rule.When_Operator || '').trim().toUpperCase();
-    const whenVal = String(rule.When_Value || '').trim();
-    const signalKey = String(rule.Then_Signal_Key || '').trim();
-    const signalVal = String(rule.Then_Signal_Value || '').trim();
-    const conf = toNum(rule.Then_Signal_Score) ?? 1.0;
-    const priority = toNum(rule.Priority) ?? 50;
+  rules.forEach(rule => {
+    const active = toBool(getQField_(rule, ['Is_Active','IsActive','active','Active']));
+    if (!active) return;
+
+    const op = String(getQField_(rule, ['When_Operator','WhenOperator','When Operator','Operator'], '')).trim().toUpperCase();
+    const whenVal = String(getQField_(rule, ['When_Value','WhenValue','When Value','Value'], '')).trim();
+
+    const signalKey = String(getQField_(rule, ['Then_Signal_Key','ThenSignalKey','Then Signal Key','Signal_Key','SignalKey'], '')).trim();
+    const signalVal = String(getQField_(rule, ['Then_Signal_Value','ThenSignalValue','Then Signal Value','Signal_Value','SignalValue'], '')).trim();
+
+    const conf = toNum(getQField_(rule, ['Then_Signal_Score','ThenSignalScore','Confidence','Score'], '')) ?? 1.0;
+    const priority = toNum(getQField_(rule, ['Priority','priority'], '')) ?? 50;
 
     if (!signalKey) return;
 
     let matches = false;
-    if (op === 'EQUALS' || op === '=') {
-      matches = (String(answerRaw).trim() === whenVal);
-    } else if (op === '!=' || op === 'NOT_EQUALS') {
-      matches = (String(answerRaw).trim() !== whenVal);
-    } else if (op === 'IN' || op === 'CONTAINS') {
-      matches = String(answerRaw).toLowerCase().includes(whenVal.toLowerCase());
-    } else if (op === '>') {
-      matches = toNum(answerRaw) > toNum(whenVal);
-    } else if (op === '>=') {
-      matches = toNum(answerRaw) >= toNum(whenVal);
-    } else if (op === '<') {
-      matches = toNum(answerRaw) < toNum(whenVal);
-    } else if (op === '<=') {
-      matches = toNum(answerRaw) <= toNum(whenVal);
-    }
+    const ans = String(answerRaw ?? '').trim();
 
-    if (matches) {
-      const existing = CPOSL.qState.signals[signalKey];
-      if (!existing || conf > existing.confidence || (conf === existing.confidence && priority > existing.priority)) {
-        CPOSL.qState.signals[signalKey] = {
-          value: signalVal,
-          confidence: conf,
-          sourceQ: qid,
-          priority: priority
-        };
-      }
+    if (op === 'EQUALS' || op === '=') matches = (ans === whenVal);
+    else if (op === '!=' || op === 'NOT_EQUALS' || op === 'NOTEQUALS') matches = (ans !== whenVal);
+    else if (op === 'IN' || op === 'CONTAINS') matches = ans.toLowerCase().includes(String(whenVal).toLowerCase());
+    else if (op === '>') matches = (toNum(ans) ?? NaN) > (toNum(whenVal) ?? NaN);
+    else if (op === '>=') matches = (toNum(ans) ?? NaN) >= (toNum(whenVal) ?? NaN);
+    else if (op === '<') matches = (toNum(ans) ?? NaN) < (toNum(whenVal) ?? NaN);
+    else if (op === '<=') matches = (toNum(ans) ?? NaN) <= (toNum(whenVal) ?? NaN);
+
+    if (!matches) return;
+
+    const existing = CPOSL.qState.signals[signalKey];
+    if (!existing || conf > existing.confidence || (conf === existing.confidence && priority > existing.priority)) {
+      CPOSL.qState.signals[signalKey] = {
+        value: signalVal,
+        confidence: conf,
+        sourceQ: qid,
+        priority: priority
+      };
     }
   });
 }
+
 
 /**
  * Debug: Check if derivation rules are firing
@@ -2646,16 +2868,19 @@ function debugDerivationRules_(qid, answerRaw) {
 
 function applyRoutingForQuestion_(qid, answerRaw) {
   rebuildSignalsFromAllAnswers_();
-  
+
   const rules = CPOSL.q.idx.qRoutesByCurrentQ.get(qid) || [];
-  const sortedRules = rules.filter(r => toBool(r.Is_Active)).sort((a, b) => (toNum(a.Priority) ?? 9999) - (toNum(b.Priority) ?? 9999));
+  const sortedRules = rules
+    .filter(r => toBool(getQField_(r, ['Is_Active','IsActive','active','Active'])))
+    .sort((a, b) => (toNum(getQField_(a, ['Priority','priority'], '')) ?? 9999) - (toNum(getQField_(b, ['Priority','priority'], '')) ?? 9999));
 
   sortedRules.forEach(rule => {
-    const sigKey = String(rule.Condition_Signal_Key || '').trim();
-    const op = String(rule.Condition_Operator || '').trim().toUpperCase();
-    const condVal = String(rule.Condition_Value || '').trim();
-    const nextQ = String(rule.Next_Question_ID || '').trim();
-    const action = String(rule.Route_Action || 'ASK').trim().toUpperCase();
+    const sigKey = String(getQField_(rule, ['Condition_Signal_Key','ConditionSignalKey','Signal_Key','SignalKey','Signal'], '')).trim();
+    const op = String(getQField_(rule, ['Condition_Operator','ConditionOperator','Operator'], '')).trim().toUpperCase();
+    const condVal = String(getQField_(rule, ['Condition_Value','ConditionValue','Value'], '')).trim();
+
+    const nextQ = String(getQField_(rule, ['Next_Question_ID','NextQuestionID','Next_QID','NextQuestion','Next'], '')).trim();
+    const action = String(getQField_(rule, ['Route_Action','RouteAction','Action'], 'ASK')).trim().toUpperCase();
 
     let matches = false;
 
@@ -2664,40 +2889,31 @@ function applyRoutingForQuestion_(qid, answerRaw) {
       if (!signal) return;
 
       const sigVal = String(signal.value || '').trim();
-      
-      if (op === 'EQUALS' || op === '=') {
-        matches = (sigVal === condVal);
-      } else if (op === '!=') {
-        matches = (sigVal !== condVal);
-      } else if (op === 'CONTAINS') {
-        matches = sigVal.toLowerCase().includes(condVal.toLowerCase());
-      }
-    } else if (sigKey === 'ANY' || !sigKey) {
+
+      if (op === 'EQUALS' || op === '=') matches = (sigVal === condVal);
+      else if (op === '!=') matches = (sigVal !== condVal);
+      else if (op === 'CONTAINS') matches = sigVal.toLowerCase().includes(condVal.toLowerCase());
+    } else {
       matches = true;
     }
 
-    if (matches) {
-      if (action === 'END' || action === 'END_IF_MIN_MET') {
-        if (CPOSL.qState.answeredCount >= CPOSL.qState.minTarget) {
-          CPOSL.qState.stop = true;
-        }
-      } else if (action === 'SKIP_TO') {
-        CPOSL.qState.queue = [];
-        if (nextQ && !CPOSL.qState.answered[nextQ] && nextQ !== qid) {
-          CPOSL.qState.queue.push(nextQ);
-          console.log(`[Q] Route SKIP_TO: ${nextQ}`);
-        }
-      } else if (action === 'ASK') {
-        if (nextQ && !CPOSL.qState.answered[nextQ] && !CPOSL.qState.queue.includes(nextQ) && nextQ !== qid) {
-          CPOSL.qState.queue.unshift(nextQ);
-          console.log(`[Q] Route ASK (drill-down): ${nextQ}`);
-        }
-      } else if (action === 'ESCALATE_EXPERT') {
-        console.log(`[Q] Escalate to expert: ${nextQ}`);
+    if (!matches) return;
+
+    if (action === 'END' || action === 'END_IF_MIN_MET') {
+      if (CPOSL.qState.answeredCount >= CPOSL.qState.minTarget) CPOSL.qState.stop = true;
+
+    } else if (action === 'SKIP_TO') {
+      CPOSL.qState.queue = [];
+      if (nextQ && !CPOSL.qState.answered[nextQ] && nextQ !== qid) CPOSL.qState.queue.push(nextQ);
+
+    } else if (action === 'ASK') {
+      if (nextQ && !CPOSL.qState.answered[nextQ] && !CPOSL.qState.queue.includes(nextQ) && nextQ !== qid) {
+        CPOSL.qState.queue.unshift(nextQ);
       }
     }
   });
 }
+
 
 
 
@@ -2859,19 +3075,20 @@ function applyEstimationMappings_() {
   };
 
   // boundsByVar can be Map or Object; your bounds sheet uses Variable_Name
-  const getVarData = (liteVarName) => {
-    const key = (typeof normKey === 'function') ? normKey(liteVarName) : norm(liteVarName);
-    const store = CPOSL?.idx?.boundsByVar;
-    if (!store) return null;
+const getVarData = (liteVarName) => {
+  const key = normKey_(liteVarName);
+  const store = CPOSL?.idx?.boundsByVar;
+  if (!store) return null;
 
-    if (typeof store.get === 'function') {
-      return store.get(key) || store.get(liteVarName) || null;
-    }
-    if (typeof store === 'object') {
-      return store[key] || store[liteVarName] || null;
-    }
-    return null;
-  };
+  if (typeof store.get === 'function') {
+    return store.get(key) || store.get(liteVarName) || null;
+  }
+  if (typeof store === 'object') {
+    return store[key] || store[liteVarName] || null;
+  }
+  return null;
+};
+
 
   const getClasses = (varData) => {
     if (!varData) return null;
@@ -3270,7 +3487,7 @@ function updateQuestionnaireUIState_() {
   const progress  = document.getElementById('qProgress');
 
   // ✅ Safe defaults (prevents undefined from freezing UI)
-  if (!window.CPOSL) window.CPOSL = {};
+  syncCPOSLRealms_();
   if (!CPOSL.qState) CPOSL.qState = {};
   if (!Array.isArray(CPOSL.qState.history)) CPOSL.qState.history = [];
   if (typeof CPOSL.qState.answeredCount !== 'number') CPOSL.qState.answeredCount = 0;
@@ -3294,13 +3511,12 @@ function updateQuestionnaireUIState_() {
   const canFinish =
     (CPOSL.qState.answeredCount >= CPOSL.qState.minTarget) || CPOSL.qState.stop;
 
-  // ✅ questionnaireReady: guard missing objects
+  // ✅ questionnaireReady should reflect indexes, not optional flags.
   const questionnaireReady = !!(
     CPOSL.q &&
-    CPOSL.q.available &&
     CPOSL.q.idx &&
-    CPOSL.q.idx.qBankById &&
-    CPOSL.q.idx.startQuestions &&
+     isMapLike_(CPOSL.q.idx.qBankById) &&
+    Array.isArray(CPOSL.q.idx.startQuestions) &&
     CPOSL.q.idx.qBankById.size > 0 &&
     CPOSL.q.idx.startQuestions.length > 0
   );
@@ -3316,6 +3532,11 @@ function updateQuestionnaireUIState_() {
 
   if (btnStart) {
     btnStart.disabled = inProgress || !questionnaireReady;
+        if (btnStart.disabled) {
+      if (!CPOSL.qDebug) CPOSL.qDebug = {};
+      CPOSL.qDebug.lastDisablePath = inProgress ? 'updateUI:inProgress' : 'updateUI:notReady';
+      logQDiag_('updateQuestionnaireUIState_', { questionnaireReady, inProgress });
+    }
     btnStart.textContent = (lang === 'HI') ? 'शुरू करें' : 'Start';
   }
   if (btnBack) {
@@ -3346,6 +3567,7 @@ function updateQuestionnaireUIState_() {
         : `Answered ${answered} / target ${target} (${pct}%)`;
   }
 }
+
 
 
 
@@ -3394,7 +3616,11 @@ function updateQuestionnaireUIState_() {
     // ---------------------------
 function qStart() {
 
-    if (!CPOSL.q.available || CPOSL.q.idx.qBankById.size === 0) {
+    const hasBank = !!(CPOSL.q && CPOSL.q.idx && isMapLike_(CPOSL.q.idx.qBankById) && CPOSL.q.idx.qBankById.size > 0);
+    if (!hasBank) {
+    if (!CPOSL.qDebug) CPOSL.qDebug = {};
+    CPOSL.qDebug.lastDisablePath = 'qStart:noBankIndex';
+    logQDiag_('qStart', { hasBank });  
     document.getElementById('qQuestionText').textContent = 'Questionnaire is unavailable. Please verify CPOS_Q_Bank and related sheets.';
     setStatus(false, 'Questionnaire unavailable');
     updateQuestionnaireUIState_();
@@ -3403,7 +3629,31 @@ function qStart() {
   CPOSL.qState.sessionId = 'Q-' + Date.now();
   CPOSL.qState.answered = {};
   CPOSL.qState.signals = {};
-  CPOSL.qState.queue = [...CPOSL.q.idx.startQuestions];
+  CPOSL.qState.queue = [...(CPOSL.q.idx.startQuestions || [])];
+
+  // Runtime fallback: if starts are empty, pick first active by seq/order from current mode, then all modes.
+  if (!CPOSL.qState.queue.length) {
+    const rows = Array.from(CPOSL.q.idx.qBankById.values());
+    const curMode = String(CPOSL.qState.mode || 'BASIC').trim().toUpperCase();
+    const inMode = rows.filter(r => String(r.Mode || r.__mode || '').trim().toUpperCase() === curMode);
+    const pool = inMode.length ? inMode : rows;
+
+    const parseSeq = (r) => {
+      const n = Number(r.__seq !== undefined ? r.__seq : r.Sequence);
+      return Number.isFinite(n) ? n : Number.POSITIVE_INFINITY;
+    };
+
+    pool.sort((a, b) => {
+      const sa = parseSeq(a);
+      const sb = parseSeq(b);
+      if (sa !== sb) return sa - sb;
+      const oa = Number.isFinite(Number(a.__order)) ? Number(a.__order) : 0;
+      const ob = Number.isFinite(Number(b.__order)) ? Number(b.__order) : 0;
+      return oa - ob;
+    });
+
+    if (pool.length) CPOSL.qState.queue = [pool[0].Question_ID || pool[0].__qid];
+  }
   CPOSL.qState.history = [];
   CPOSL.qState.current = null;
   CPOSL.qState.answeredCount = 0;
@@ -3429,6 +3679,7 @@ function qStart() {
   updateQuestionnaireUIState_();
   setStatus(true, 'Questionnaire started');
 }
+
 
 
 
@@ -4448,22 +4699,102 @@ function updateDerivedBoxWithEstimations_(mapped, estimated) {
         .saveCPOSLiteAssessment(payload);
     }
 
+
+function gsRun_(fnName, ...args) {
+  return new Promise((resolve, reject) => {
+    try {
+      if (typeof google === 'undefined' || !google.script || !google.script.run) {
+        return reject(new Error('Apps Script runtime not available (google.script.run missing)'));
+      }
+      const runner = google.script.run
+        .withSuccessHandler(resolve)
+        .withFailureHandler(reject);
+
+      if (typeof runner[fnName] !== 'function') {
+        return reject(new Error(`Backend function not found: ${fnName}`));
+      }
+      runner[fnName](...args);
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+// ✅ override/standardize wrappers so init() always receives full objects
+async function getCPOSLiteTables() {
+  return await gsRun_('getCPOSLiteTables');
+}
+async function getCPOSQuestionnaireConfig() {
+  return await gsRun_('getCPOSQuestionnaireConfig');
+}
+
+function ensureLiteRowKeys_(r) {
+  if (!r || typeof r !== 'object') return r;
+
+  // shallow copy so we don't mutate original reference unexpectedly
+  const o = Object.assign({}, r);
+
+  // Canonical (snake_case) from backend
+  const vN = o.Variable_Name ?? o.VariableName ?? o.variable_name ?? o.variablename;
+  const cL = o.Class_Label ?? o.ClassLabel ?? o.class_label ?? o.classlabel;
+  const pW = o.Pathway ?? o.pathway;
+
+  // Add camelCase mirrors (in case buildIndexes_ expects them)
+  if (o.VariableName === undefined && vN !== undefined) o.VariableName = vN;
+  if (o.ClassLabel === undefined && cL !== undefined) o.ClassLabel = cL;
+
+  // Ensure snake_case exists too (in case buildIndexes_ expects snake_case)
+  if (o.Variable_Name === undefined && o.VariableName !== undefined) o.Variable_Name = o.VariableName;
+  if (o.Class_Label === undefined && o.ClassLabel !== undefined) o.Class_Label = o.ClassLabel;
+
+  // Desirability / weights fields
+  if (o.Desirability_0_1 === undefined && o.Desirability01 !== undefined) o.Desirability_0_1 = o.Desirability01;
+  if (o.Sensitivity_Weight_0_10 === undefined && o.SensitivityWeight010 !== undefined) o.Sensitivity_Weight_0_10 = o.SensitivityWeight010;
+
+  // Pathway mirror (rare but safe)
+  if (o.Pathway === undefined && pW !== undefined) o.Pathway = pW;
+
+  return o;
+}
+
+
     // ---------------------------
     // Init
     // ---------------------------
 async function init() {
   console.log('[CPOS-Lite] init() start');
-  setStatus(true, 'Loading CPOS_Lite tables…');
 
-  // ✅ HARDEN: ensure required objects exist early
-  if (!window.CPOSL) window.CPOSL = {};
+  // ---- Safe status setter (won't crash init if UI not ready) ----
+  const safeStatus_ = (ok, msg) => {
+    try { setStatus(ok, msg); } catch (e) { console.warn('[CPOS-Lite] setStatus failed:', e); }
+  };
+
+  safeStatus_(true, 'Loading CPOS_Lite tables…');
+
+  // ---- HARDEN: ensure CPOSL exists, even if not declared globally yet ----
+  const G = (typeof globalThis !== 'undefined') ? globalThis : window;
+  if (!G.CPOSL) G.CPOSL = {};
+  const CPOSL = G.CPOSL;
+
+  // ---- HARDEN: keep realms synced (safe + awaitable) ----
+  try {
+    if (typeof syncCPOSLRealms_ === 'function') {
+      await Promise.resolve(syncCPOSLRealms_());
+    } else {
+      console.warn('[CPOS-Lite] syncCPOSLRealms_() not found; continuing without realm sync');
+    }
+  } catch (e) {
+    console.warn('[CPOS-Lite] syncCPOSLRealms_() failed:', e);
+  }
+
+  // ---- HARDEN: ensure required objects exist early ----
   if (!CPOSL.data) CPOSL.data = {};
   if (!CPOSL.idx) CPOSL.idx = {};
   if (!CPOSL.q) CPOSL.q = {};
   if (!CPOSL.q.idx) CPOSL.q.idx = {};
   if (!CPOSL.qState) CPOSL.qState = { mode: 'BASIC' };
 
-  // ✅ HARDEN: questionnaire state fields many functions assume exist
+  // ---- HARDEN: questionnaire state fields many functions assume exist ----
   if (!CPOSL.qState.mode) CPOSL.qState.mode = 'BASIC';
   if (!CPOSL.qState.answered) CPOSL.qState.answered = {};
   if (!CPOSL.qState.signals) CPOSL.qState.signals = {};
@@ -4472,54 +4803,75 @@ async function init() {
   if (!CPOSL.qState.history) CPOSL.qState.history = [];
   if (typeof CPOSL.qState.answeredCount !== 'number') CPOSL.qState.answeredCount = 0;
   if (typeof CPOSL.qState.minTarget !== 'number') CPOSL.qState.minTarget = 8;
-  if (!CPOSL.qState.stop) CPOSL.qState.stop = false;
+  if (typeof CPOSL.qState.stop !== 'boolean') CPOSL.qState.stop = false;
 
-  // ✅ HARDEN: language default
+  // ---- HARDEN: language default ----
   if (!CPOSL.language) CPOSL.language = 'EN';
 
-  // ================= TEMP DEBUG (remove later) =================
-  try {
-    if (typeof google !== 'undefined' && google.script && google.script.run) {
-
-      google.script.run
-        .withSuccessHandler(ctx => console.log('[CPOS][DBG] Spreadsheet context', ctx))
-        .withFailureHandler(err => console.error('[CPOS][DBG] Spreadsheet context failed', err))
-        .debugSpreadsheetContext();
-
-      ['CPOS_Q_Bank','CPOS_Q_Options','CPOS_Q_Derivation_Rules','CPOS_Q_Routing_Rules','CPOS_Q_Signal_to_LiteFactor_Map']
-        .forEach(name => {
-          google.script.run
-            .withSuccessHandler(x => console.log('[CPOS][DBG] peek', x))
-            .withFailureHandler(e => console.error('[CPOS][DBG] peek failed', name, e))
-            .debugTablePeek(name, 2);
-        });
-
-      google.script.run
-        .withSuccessHandler(x => console.log('[CPOS][DBG] getCPOSQuestionnaireConfig() return', x))
-        .withFailureHandler(e => console.error('[CPOS][DBG] getCPOSQuestionnaireConfig() return FAILED', e))
-        .debugQuestionnaireConfigReturn();
-
-    } else {
-      console.warn('[CPOS][DBG] Apps Script runtime not available for debug calls');
-    }
-  } catch (e) {
-    console.warn('[CPOS][DBG] debug call error:', e);
-  }
   // =============================================================
+  // Debug gating (OFF by default)
+  // Enable by: CPOSL.debug = true; OR add ?cposDebug=1 to URL
+  // =============================================================
+  const DEBUG =
+    (CPOSL && CPOSL.debug === true) ||
+    (typeof location !== 'undefined' && /[?&]cposDebug=1\b/.test(location.search));
+
+  if (DEBUG) {
+    try {
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler(ctx => console.log('[CPOS][DBG] Spreadsheet context', ctx))
+          .withFailureHandler(err => console.error('[CPOS][DBG] Spreadsheet context failed', err))
+          .debugSpreadsheetContext();
+
+        ['CPOS_Q_Bank','CPOS_Q_Options','CPOS_Q_Derivation_Rules','CPOS_Q_Routing_Rules','CPOS_Q_Signal_to_LiteFactor_Map']
+          .forEach(name => {
+            google.script.run
+              .withSuccessHandler(x => console.log('[CPOS][DBG] peek', x))
+              .withFailureHandler(e => console.error('[CPOS][DBG] peek failed', name, e))
+              .debugTablePeek(name, 2);
+          });
+
+        google.script.run
+          .withSuccessHandler(x => console.log('[CPOS][DBG] getCPOSQuestionnaireConfig() return', x))
+          .withFailureHandler(e => console.error('[CPOS][DBG] getCPOSQuestionnaireConfig() return FAILED', e))
+          .debugQuestionnaireConfigReturn();
+      } else {
+        console.warn('[CPOS][DBG] Apps Script runtime not available for debug calls');
+      }
+    } catch (e) {
+      console.warn('[CPOS][DBG] debug call error:', e);
+    }
+  }
+
+  function coerceObj_(x) {
+  if (typeof x === 'string') {
+    try { return JSON.parse(x); } catch (e) { /* ignore */ }
+  }
+  return x;
+}
+
+// pick first existing value from multiple possible keys/paths
+function pickAny_(obj, pickers) {
+  for (const p of pickers) {
+    try {
+      const v = (typeof p === 'function') ? p(obj) : undefined;
+      if (v !== undefined && v !== null) return v;
+    } catch (e) {}
+  }
+  return undefined;
+}
 
   // ✅ DROP-IN helper: normalize tables to array-of-objects
   function normalizeTable_(raw) {
-    // Already array? Could be objects OR arrays.
     if (Array.isArray(raw)) return raw;
 
-    // {headers, rows}
     const headers = Array.isArray(raw?.headers) ? raw.headers : [];
     const rows = Array.isArray(raw?.rows) ? raw.rows : [];
     if (!headers.length || !rows.length) return [];
 
     return rows.map(r => {
-      if (r && typeof r === 'object' && !Array.isArray(r)) return r; // already object
-
+      if (r && typeof r === 'object' && !Array.isArray(r)) return r;
       const obj = {};
       for (let i = 0; i < headers.length; i++) {
         const h = String(headers[i] ?? '').trim();
@@ -4533,9 +4885,8 @@ async function init() {
   // Safety net: if we somehow still got arrays-of-arrays, map using headers
   function arraysToObjectsIfNeeded_(arr, headers) {
     if (!Array.isArray(arr) || arr.length === 0) return arr;
-    if (!Array.isArray(arr[0])) return arr; // already objects
-    if (!Array.isArray(headers) || headers.length === 0) return []; // can't map
-
+    if (!Array.isArray(arr[0])) return arr;
+    if (!Array.isArray(headers) || headers.length === 0) return [];
     return arr.map(r => {
       const obj = {};
       for (let i = 0; i < headers.length; i++) {
@@ -4547,107 +4898,268 @@ async function init() {
     });
   }
 
+  // ✅ NEW: Normalize Lite row keys so both snake_case and camelCase exist
+  function ensureLiteRowKeys_(r) {
+    if (!r || typeof r !== 'object') return r;
+    const o = Object.assign({}, r);
+
+    const vN = o.Variable_Name ?? o.VariableName ?? o.variable_name ?? o.variablename;
+    const cL = o.Class_Label ?? o.ClassLabel ?? o.class_label ?? o.classlabel;
+    const pW = o.Pathway ?? o.pathway;
+
+    // camelCase mirrors
+    if (o.VariableName === undefined && vN !== undefined) o.VariableName = vN;
+    if (o.ClassLabel === undefined && cL !== undefined) o.ClassLabel = cL;
+
+    // snake_case mirrors
+    if (o.Variable_Name === undefined && o.VariableName !== undefined) o.Variable_Name = o.VariableName;
+    if (o.Class_Label === undefined && o.ClassLabel !== undefined) o.Class_Label = o.ClassLabel;
+
+    // desirability / weights mirrors
+    if (o.Desirability_0_1 === undefined && o.Desirability01 !== undefined) o.Desirability_0_1 = o.Desirability01;
+    if (o.Sensitivity_Weight_0_10 === undefined && o.SensitivityWeight010 !== undefined) o.Sensitivity_Weight_0_10 = o.SensitivityWeight010;
+
+    if (o.Pathway === undefined && pW !== undefined) o.Pathway = pW;
+
+    return o;
+  }
+
+  // Helper: safe DOM access
+  function byId_(id) {
+    try { return document.getElementById(id); } catch (e) { return null; }
+  }
+
   try {
-    const res = await getCPOSLiteTables();
-    if (!res || res.ok !== true) {
-      setStatus(false, 'Failed to load CPOS_Lite tables (bad response).');
+    if (typeof getCPOSLiteTables !== 'function') {
+      safeStatus_(false, 'Load error: getCPOSLiteTables() is not defined.');
       return;
     }
 
-    CPOSL.data.bounds = Array.isArray(res.bounds) ? res.bounds : [];
-    CPOSL.data.desirability = Array.isArray(res.desirability) ? res.desirability : [];
-    CPOSL.data.weights = Array.isArray(res.weights) ? res.weights : [];
+    let res = await getCPOSLiteTables();
+res = coerceObj_(res);
 
-    buildIndexes_();
-    const nFactors = CPOSL.idx.boundsByVar.size;
+console.log('[CPOS-Lite] getCPOSLiteTables() raw =', res);
+console.log('[CPOS-Lite] getCPOSLiteTables() keys =', Object.keys(res || {}));
+
+const okLite = (res && (res.ok === true || res.success === true));
+if (!okLite) {
+  safeStatus_(false, 'Failed to load CPOS_Lite tables (bad response). Check console for raw payload.');
+  return;
+}
+
+// Be tolerant to different server shapes
+const bRaw = pickAny_(res, [
+  o => o.bounds,
+  o => o.liteBounds,
+  o => o.data?.bounds,
+  o => o.tables?.bounds,
+  o => o.payload?.bounds
+]);
+
+const dRaw = pickAny_(res, [
+  o => o.desirability,
+  o => o.liteDesirability,
+  o => o.data?.desirability,
+  o => o.tables?.desirability,
+  o => o.payload?.desirability
+]);
+
+const wRaw = pickAny_(res, [
+  o => o.weights,
+  o => o.liteWeights,
+  o => o.data?.weights,
+  o => o.tables?.weights,
+  o => o.payload?.weights
+]);
+
+console.log('[CPOS-Lite] Lite tables picked shapes:', {
+  boundsType: typeof bRaw, desirType: typeof dRaw, weightsType: typeof wRaw,
+  boundsIsArray: Array.isArray(bRaw), desirIsArray: Array.isArray(dRaw), weightsIsArray: Array.isArray(wRaw),
+  boundsHeaders: bRaw?.headers?.length, desirHeaders: dRaw?.headers?.length, weightsHeaders: wRaw?.headers?.length,
+  boundsRows: bRaw?.rows?.length, desirRows: dRaw?.rows?.length, weightsRows: wRaw?.rows?.length,
+  boundsLen: bRaw?.length, desirLen: dRaw?.length, weightsLen: wRaw?.length
+});
+
+
+    let boundsArr  = normalizeTable_(bRaw);
+    let desirArr   = normalizeTable_(dRaw);
+    let weightsArr = normalizeTable_(wRaw);
+
+    boundsArr  = arraysToObjectsIfNeeded_(boundsArr,  bRaw?.headers);
+    desirArr   = arraysToObjectsIfNeeded_(desirArr,   dRaw?.headers);
+    weightsArr = arraysToObjectsIfNeeded_(weightsArr, wRaw?.headers);
+
+    // ✅ APPLY “these” HERE: force key normalization for indexing
+    CPOSL.data.bounds       = (Array.isArray(boundsArr)  ? boundsArr  : []).map(ensureLiteRowKeys_);
+    CPOSL.data.desirability = (Array.isArray(desirArr)   ? desirArr   : []).map(ensureLiteRowKeys_);
+    CPOSL.data.weights      = (Array.isArray(weightsArr) ? weightsArr : []).map(ensureLiteRowKeys_);
+
+
+    if (!CPOSL.data.bounds.length && !CPOSL.data.desirability.length && !CPOSL.data.weights.length) {
+  safeStatus_(false, 'CPOS_Lite tables returned 0 rows. Open console → see getCPOSLiteTables() raw payload.');
+  return;
+}
+
+
+    // Build factor indexes
+    try {
+      if (typeof buildIndexes_ !== 'function') {
+        safeStatus_(false, 'Load error: buildIndexes_() is not defined.');
+        return;
+      }
+      buildIndexes_();
+    } catch (e) {
+      console.error('[CPOS-Lite] buildIndexes_ failed:', e);
+      safeStatus_(false, 'Load error: factor index build failed: ' + (e?.message || String(e)));
+      return;
+    }
+
+    const nFactors = (CPOSL.idx && CPOSL.idx.boundsByVar && CPOSL.idx.boundsByVar.size)
+      ? CPOSL.idx.boundsByVar.size
+      : 0;
 
     // ---------------- Questionnaire Load ----------------
     try {
-      const qRes = await getCPOSQuestionnaireConfig();
-
-      if (!qRes || qRes.ok !== true) {
-        console.warn('[CPOS][Q] Bad questionnaire response:', qRes);
+      if (typeof getCPOSQuestionnaireConfig !== 'function') {
+        console.warn('[CPOS][Q] getCPOSQuestionnaireConfig() not defined; disabling questionnaire');
         CPOSL.q.available = false;
+        if (!CPOSL.qDebug) CPOSL.qDebug = {};
+        CPOSL.qDebug.lastDisablePath = 'init:getCPOSQuestionnaireConfig-missing';
+        try { logQDiag_('init:getCPOSQuestionnaireConfig-missing'); } catch (e) {}
 
-        setStatus(true, `Ready • Factors=${nFactors} • Questionnaire unavailable`);
-
-        const qText = document.getElementById('qQuestionText');
-        const btn = document.getElementById('btnQStart');
-        if (qText) qText.textContent = 'Questionnaire config not available (bad response).';
+        safeStatus_(true, `Ready • Factors=${nFactors} • Questionnaire unavailable`);
+        const qText = byId_('qQuestionText');
+        const btn = byId_('btnQStart');
+        if (qText) qText.textContent = 'Questionnaire config function not available.';
         if (btn) btn.disabled = true;
 
       } else {
+        const qRes = await getCPOSQuestionnaireConfig();
 
-        // ✅ IMPORTANT: normalize BOTH shapes (arrays OR {headers, rows})
-        const bankRaw   = qRes.bank;
-        const optRaw    = qRes.options;
-        const derivRaw  = qRes.derivationRules;
-        const routeRaw  = qRes.routingRules;
-        const mapRaw    = qRes.signalToLiteMap;
-        const boundsRaw = qRes.liteBounds;
+        const qRes0 = coerceObj_(qRes);
+console.log('[CPOS][Q] getCPOSQuestionnaireConfig() raw =', qRes0);
+console.log('[CPOS][Q] keys =', Object.keys(qRes0 || {}));
 
-        let bankArr   = normalizeTable_(bankRaw);
-        let optArr    = normalizeTable_(optRaw);
-        let derivArr  = normalizeTable_(derivRaw);
-        let routeArr  = normalizeTable_(routeRaw);
-        let mapArr    = normalizeTable_(mapRaw);
-        let boundsArr = normalizeTable_(boundsRaw);
 
-        // Safety net if any came back as direct rows[] without mapping
-        bankArr   = arraysToObjectsIfNeeded_(bankArr,   bankRaw?.headers   || qRes?.meta?.bankHeaders);
-        optArr    = arraysToObjectsIfNeeded_(optArr,    optRaw?.headers    || qRes?.meta?.optionsHeaders);
-        derivArr  = arraysToObjectsIfNeeded_(derivArr,  derivRaw?.headers  || qRes?.meta?.derivHeaders);
-        routeArr  = arraysToObjectsIfNeeded_(routeArr,  routeRaw?.headers  || qRes?.meta?.routesHeaders);
-        mapArr    = arraysToObjectsIfNeeded_(mapArr,    mapRaw?.headers    || qRes?.meta?.signalMapHeaders);
-        boundsArr = arraysToObjectsIfNeeded_(boundsArr, boundsRaw?.headers || qRes?.meta?.boundsHeaders);
+        // ✅ ACCEPT ok:true OR success:true
+        const qOk = !!(qRes && (qRes.ok === true || qRes.success === true));
 
-        CPOSL.q.bank = bankArr;
-        CPOSL.q.options = optArr;
-        CPOSL.q.derivationRules = derivArr;
-        CPOSL.q.routingRules = routeArr;
-        CPOSL.q.signalToLiteMap = mapArr;
-        CPOSL.q.liteBounds = boundsArr;
+        if (!qOk) {
+          console.warn('[CPOS][Q] Bad questionnaire response:', qRes);
+          CPOSL.q.available = false;
 
-        console.log('[CPOS][Q] normalized sample', {
-          bankLen: CPOSL.q.bank.length,
-          bank0Keys: CPOSL.q.bank[0] ? Object.keys(CPOSL.q.bank[0]).slice(0, 20) : null,
-          bank0: CPOSL.q.bank[0] || null
-        });
+          if (!CPOSL.qDebug) CPOSL.qDebug = {};
+          CPOSL.qDebug.lastDisablePath = 'init:badQuestionnaireResponse';
+          try { logQDiag_('init:bad-questionnaire-response'); } catch (e) {}
 
-        buildQuestionnaireIndexes_();
+          safeStatus_(true, `Ready • Factors=${nFactors} • Questionnaire unavailable`);
 
-        // ✅ wire language radios only AFTER q state exists
-        try { setupLanguageRadios_(); } catch (e) {
-          console.warn('[CPOS][Q] setupLanguageRadios_ failed:', e);
-        }
-
-        if (Array.isArray(qRes.warnings) && qRes.warnings.length) {
-          console.warn('[CPOS][Q] Backend warnings:', qRes.warnings);
-        }
-        if (qRes.meta) {
-          console.log('[CPOS][Q] backend meta', qRes.meta);
-        }
-
-        const nQ = CPOSL.q.idx.qBankById.size;
-        const nStart = CPOSL.q.idx.startQuestions.length;
-
-        CPOSL.q.available = nQ > 0 && nStart > 0;
-
-        const qText = document.getElementById('qQuestionText');
-        const btn = document.getElementById('btnQStart');
-
-        if (!CPOSL.q.available) {
-          const reason = (nQ === 0)
-            ? 'Questionnaire data is empty or has invalid headers. Verify CPOS_Q_Bank has Question_ID and Is_Active.'
-            : 'Questionnaire loaded but no start questions found. Ensure Group_Code=START or valid Sequence/Mode.';
-
-          setStatus(true, `Ready • Factors=${nFactors} • Questionnaire unavailable`);
-          if (qText) qText.textContent = reason;
+          const qText = byId_('qQuestionText');
+          const btn = byId_('btnQStart');
+          if (qText) qText.textContent = 'Questionnaire config not available (bad response).';
           if (btn) btn.disabled = true;
 
         } else {
-          setStatus(true, `Ready • Factors=${nFactors} • QBank=${nQ}`);
-          if (btn) btn.disabled = false;
+          // ✅ Normalize BOTH shapes (arrays OR {headers, rows})
+          const bankRaw   = qRes.bank;
+          const optRaw    = qRes.options;
+          const derivRaw  = qRes.derivationRules;
+          const routeRaw  = qRes.routingRules;
+          const mapRaw    = qRes.signalToLiteMap;
+
+          // ✅ bounds can be liteBounds OR bounds
+          const boundsRaw = qRes.liteBounds || qRes.bounds;
+
+          let bankArr    = normalizeTable_(bankRaw);
+          let optArr     = normalizeTable_(optRaw);
+          let derivArr   = normalizeTable_(derivRaw);
+          let routeArr   = normalizeTable_(routeRaw);
+          let mapArr     = normalizeTable_(mapRaw);
+          let qBoundsArr = normalizeTable_(boundsRaw);
+
+          bankArr    = arraysToObjectsIfNeeded_(bankArr,    bankRaw?.headers);
+          optArr     = arraysToObjectsIfNeeded_(optArr,     optRaw?.headers);
+          derivArr   = arraysToObjectsIfNeeded_(derivArr,   derivRaw?.headers);
+          routeArr   = arraysToObjectsIfNeeded_(routeArr,   routeRaw?.headers);
+          mapArr     = arraysToObjectsIfNeeded_(mapArr,     mapRaw?.headers);
+          qBoundsArr = arraysToObjectsIfNeeded_(qBoundsArr, boundsRaw?.headers);
+
+          // Reset questionnaire containers to avoid stale leftovers on re-init
+          CPOSL.q.bank             = Array.isArray(bankArr) ? bankArr : [];
+          CPOSL.q.options          = Array.isArray(optArr) ? optArr : [];
+          CPOSL.q.derivationRules  = Array.isArray(derivArr) ? derivArr : [];
+          CPOSL.q.routingRules     = Array.isArray(routeArr) ? routeArr : [];
+          CPOSL.q.signalToLiteMap  = Array.isArray(mapArr) ? mapArr : [];
+
+          // ✅ also normalize bounds keys (useful if any UI/logic expects VariableName)
+          CPOSL.q.liteBounds       = (Array.isArray(qBoundsArr) ? qBoundsArr : []).map(ensureLiteRowKeys_);
+
+          console.log('[CPOS][Q] normalized sample', {
+            bankLen: CPOSL.q.bank.length,
+            bank0Keys: CPOSL.q.bank[0] ? Object.keys(CPOSL.q.bank[0]).slice(0, 20) : null,
+            bank0: CPOSL.q.bank[0] || null
+          });
+
+          try {
+            if (typeof buildQuestionnaireIndexes_ === 'function') {
+              buildQuestionnaireIndexes_();
+              wireLanguageToggle_();
+            } else {
+              console.warn('[CPOS][Q] buildQuestionnaireIndexes_() not defined; questionnaire will be unavailable');
+            }
+          } catch (e) {
+            console.warn('[CPOS][Q] buildQuestionnaireIndexes_ failed:', e);
+          }
+
+          // ✅ wire language radios only AFTER q state exists
+          try {
+            if (typeof setupLanguageRadios_ === 'function') setupLanguageRadios_();
+          } catch (e) {
+            console.warn('[CPOS][Q] setupLanguageRadios_ failed:', e);
+          }
+
+          if (Array.isArray(qRes.warnings) && qRes.warnings.length) {
+            console.warn('[CPOS][Q] Backend warnings:', qRes.warnings);
+          }
+          if (qRes.meta) {
+            console.log('[CPOS][Q] backend meta', qRes.meta);
+          }
+
+          const nQ = (CPOSL.q && CPOSL.q.idx && CPOSL.q.idx.qBankById && CPOSL.q.idx.qBankById.size)
+            ? CPOSL.q.idx.qBankById.size
+            : 0;
+
+          const nStart = (CPOSL.q && CPOSL.q.idx && Array.isArray(CPOSL.q.idx.startQuestions))
+            ? CPOSL.q.idx.startQuestions.length
+            : 0;
+
+          const questionnaireReady =
+            !!(typeof isMapLike_ === 'function'
+              ? (isMapLike_(CPOSL.q.idx.qBankById) && nQ > 0 && nStart > 0)
+              : (nQ > 0 && nStart > 0));
+
+          CPOSL.q.available = questionnaireReady;
+
+          const qText = byId_('qQuestionText');
+          const btn = byId_('btnQStart');
+
+          if (!questionnaireReady) {
+            if (!CPOSL.qDebug) CPOSL.qDebug = {};
+            CPOSL.qDebug.lastDisablePath = (nQ === 0) ? 'init:noBankRows' : 'init:noStartQuestions';
+            try { logQDiag_('init:questionnaire-not-ready', { nQ, nStart }); } catch (e) {}
+
+            const reason = (nQ === 0)
+              ? 'Questionnaire data is empty or has invalid headers. Verify CPOS_Q_Bank has Question_ID and Is_Active.'
+              : 'Questionnaire loaded but start question resolution failed. Check Mode/Sequence values.';
+
+            safeStatus_(true, `Ready • Factors=${nFactors} • Questionnaire unavailable`);
+            if (qText) qText.textContent = reason;
+            if (btn) btn.disabled = true;
+
+          } else {
+            safeStatus_(true, `Ready • Factors=${nFactors} • QBank=${nQ}`);
+            if (btn) btn.disabled = false;
+          }
         }
       }
 
@@ -4655,23 +5167,37 @@ async function init() {
       console.warn('[CPOS][Q] Load error:', qErr);
       CPOSL.q.available = false;
 
-      setStatus(true, `Ready • Factors=${nFactors} • Questionnaire unavailable`);
+      if (!CPOSL.qDebug) CPOSL.qDebug = {};
+      CPOSL.qDebug.lastDisablePath = 'init:questionnaire-load-error';
+      try { logQDiag_('init:questionnaire-load-error', { error: String(qErr?.message || qErr || '') }); } catch (e) {}
 
-      const qText = document.getElementById('qQuestionText');
-      const btn = document.getElementById('btnQStart');
+      safeStatus_(true, `Ready • Factors=${nFactors} • Questionnaire unavailable`);
+
+      const qText = byId_('qQuestionText');
+      const btn = byId_('btnQStart');
       if (qText) qText.textContent = 'Questionnaire config load failed.';
       if (btn) btn.disabled = true;
     }
     // ---------------------------------------------------
 
-    renderFactorForm();
+    // Render factor UI
+    try {
+      if (typeof renderFactorForm === 'function') renderFactorForm();
+      else console.warn('[CPOS-Lite] renderFactorForm() not defined; skipping render');
+    } catch (e) {
+      console.warn('[CPOS-Lite] renderFactorForm() failed:', e);
+    }
 
-    // ✅ CRITICAL: final UI enablement after questionnaire + language wiring
-    updateQuestionnaireUIState_();
+    // ✅ Final UI enablement after questionnaire + language wiring
+    try {
+      if (typeof updateQuestionnaireUIState_ === 'function') updateQuestionnaireUIState_();
+    } catch (e) {
+      console.warn('[CPOS-Lite] updateQuestionnaireUIState_ failed:', e);
+    }
 
   } catch (err) {
     console.error('[CPOS-Lite] load error:', err);
-    setStatus(false, 'Load error: ' + (err?.message || String(err)));
+    safeStatus_(false, 'Load error: ' + (err?.message || String(err)));
   }
 }
 
