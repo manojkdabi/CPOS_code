@@ -7,11 +7,22 @@ You were experiencing an issue where:
 - Console showed `getCPOSQuestionnaireConfig() raw = null`
 - System showed `Factors=0` and `bankSize: 0`
 
-**Root Cause:** The required Google Sheets tables were missing from your spreadsheet.
+**Root Causes:** 
+1. The required Google Sheets tables were missing from your spreadsheet
+2. The backend code was trying to use a placeholder spreadsheet ID
 
 ## Solution Implemented
 
 The code has been updated to **automatically initialize** all required tables when they're missing. This happens automatically when you first load the web app.
+
+### Critical Fix - Spreadsheet ID Handling
+
+**IMPORTANT:** The backend now properly handles the spreadsheet ID placeholder. The code will:
+1. First try to use `SpreadsheetApp.getActiveSpreadsheet()` (for container-bound scripts)
+2. Only fall back to `CPOS_SS_ID` if it's set to a valid ID (not the placeholder)
+3. Reject the placeholder text `'PASTE_YOUR_SPREADSHEET_ID_HERE'`
+
+**This means:** You MUST deploy this as a **container-bound script** (script attached to your spreadsheet), NOT as a standalone script.
 
 ### What Was Added
 
@@ -32,13 +43,18 @@ The code has been updated to **automatically initialize** all required tables wh
 
 ## How to Deploy
 
-### Step 1: Update Your Apps Script
+### Step 1: Update Your Apps Script (Container-Bound)
 
-1. Open your Google Spreadsheet
+**CRITICAL: Use Container-Bound Script**
+
+1. Open your Google Spreadsheet (the one with your data)
 2. Go to **Extensions > Apps Script**
-3. Replace the contents of `Code.gs` with the contents of `CPOS_100226_backend`
-4. Create or update `Index.html` with the contents of `CPOS_100226_frontend`
-5. Save the project (Ctrl+S or Cmd+S)
+3. This creates a container-bound script (attached to your spreadsheet)
+4. Replace the contents of `Code.gs` with the contents of `CPOS_100226_backend`
+5. Create or update `Index.html` with the contents of `CPOS_100226_frontend`
+6. Save the project (Ctrl+S or Cmd+S)
+
+**DO NOT** create a standalone Apps Script project - it must be bound to your spreadsheet!
 
 ### Step 2: Deploy as Web App
 

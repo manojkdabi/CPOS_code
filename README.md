@@ -1,6 +1,18 @@
 # CPOS_code
 CPOS code files
 
+## 🔥 CRITICAL: Must Use Container-Bound Script
+
+**The backend code MUST be deployed as a container-bound script (attached to your spreadsheet), NOT as a standalone script.**
+
+1. Open your Google Spreadsheet
+2. Go to **Extensions > Apps Script** (this creates a container-bound script)
+3. Copy the backend code into Code.gs
+4. Copy the frontend code into Index.html
+5. Deploy as Web App from this script editor
+
+If you see errors about "No active spreadsheet", it means you're using a standalone script instead of a container-bound one.
+
 ## Quick Start - Fix Questionnaire Not Loading Issue
 
 If you're seeing "Questionnaire unavailable" and a frozen Start button, follow these steps:
