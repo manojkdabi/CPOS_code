@@ -70,21 +70,30 @@ function cpos_getSS_() {
 
 /** ---------- Utilities ---------- */
 
+/**
+ * Helper: Check if a sheet exists and has data (more than just headers)
+ * @param {string} sheetName - Name of the sheet to check
+ * @return {boolean} - True if sheet exists and has at least one data row
+ */
+function cpos_hasSheetData_(sheetName) {
+  try {
+    const ss = cpos_getSS_();
+    const sheet = ss.getSheetByName(sheetName);
+    return sheet && sheet.getLastRow() > 1;
+  } catch (e) {
+    return false;
+  }
+}
+
 // ✅ Server API for frontend boot
 function getCPOSLiteTables() {
   const warnings = [];
   
   // Check if Lite tables exist AND have data, if not, try to auto-initialize
   try {
-    const ss = cpos_getSS_();
-    const boundsSheet = ss.getSheetByName('CPOS_Lite_Bounds');
-    const desirSheet = ss.getSheetByName('CPOS_Lite_Desirability');
-    const wtsSheet = ss.getSheetByName('CPOS_Lite_Weights');
-    
-    // Check if sheets exist AND have data (more than just header row)
-    const boundsHasData = boundsSheet && boundsSheet.getLastRow() > 1;
-    const desirHasData = desirSheet && desirSheet.getLastRow() > 1;
-    const wtsHasData = wtsSheet && wtsSheet.getLastRow() > 1;
+    const boundsHasData = cpos_hasSheetData_('CPOS_Lite_Bounds');
+    const desirHasData = cpos_hasSheetData_('CPOS_Lite_Desirability');
+    const wtsHasData = cpos_hasSheetData_('CPOS_Lite_Weights');
     
     if (!boundsHasData || !desirHasData || !wtsHasData) {
       Logger.log('[CPOS][Lite] Lite tables missing or empty. Auto-initializing...');
@@ -827,13 +836,8 @@ function cpos_getTableByAliases_(names) {
 function getCPOSQuestionnaireConfig() {
   try {
     // Check if questionnaire sheets exist AND have data, if not, try to auto-initialize
-    const ss = cpos_getSS_();
-    const qBankSheet = ss.getSheetByName('CPOS_Q_Bank');
-    const qOptsSheet = ss.getSheetByName('CPOS_Q_Options');
-    
-    // Check if sheets exist AND have data (more than just header row)
-    const qBankHasData = qBankSheet && qBankSheet.getLastRow() > 1;
-    const qOptsHasData = qOptsSheet && qOptsSheet.getLastRow() > 1;
+    const qBankHasData = cpos_hasSheetData_('CPOS_Q_Bank');
+    const qOptsHasData = cpos_hasSheetData_('CPOS_Q_Options');
     
     if (!qBankHasData || !qOptsHasData) {
       Logger.log('[CPOS][Q] Questionnaire sheets missing or empty. Auto-initializing...');
