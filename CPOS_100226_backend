@@ -52,6 +52,26 @@ function cpos_getSS_() {
 // ✅ Server API for frontend boot
 function getCPOSLiteTables() {
   const warnings = [];
+  
+  // Check if Lite tables exist, if not, try to auto-initialize
+  try {
+    const ss = cpos_getSS_();
+    const hasBounds = ss.getSheetByName('CPOS_Lite_Bounds') !== null;
+    
+    if (!hasBounds) {
+      Logger.log('[CPOS][Lite] Lite tables missing. Auto-initializing...');
+      try {
+        INIT_LITE_TABLES();
+        Logger.log('[CPOS][Lite] Auto-initialization successful');
+      } catch (initErr) {
+        Logger.log('[CPOS][Lite] Auto-initialization failed: ' + initErr);
+        warnings.push('Auto-initialization of Lite tables failed: ' + initErr);
+      }
+    }
+  } catch (e) {
+    warnings.push('Could not check for Lite tables: ' + e);
+  }
+  
   const ctx = debugSpreadsheetContext();
 
   let bounds = { headers: [], rows: [], warnings: [] };
@@ -87,6 +107,10 @@ function getCPOSLiteTables() {
 
   // ✅ ok only if we actually have rows
   const ok = boundsRows.length > 0 && desirRows.length > 0 && wtsRows.length > 0;
+  
+  if (!ok && boundsRows.length === 0 && desirRows.length === 0 && wtsRows.length === 0) {
+    warnings.push('All Lite tables are empty. Run INIT_LITE_TABLES() to populate sample data.');
+  }
 
   const meta = {
     spreadsheetId: ctx.id || null,
@@ -2211,5 +2235,110 @@ function INIT_QUESTIONNAIRE_SHEETS() {
     ok: true,
     message: 'Questionnaire sheets initialized successfully',
     sheets: ['CPOS_Q_Bank', 'CPOS_Q_Options', 'CPOS_Q_Derivation_Rules', 'CPOS_Q_Routing_Rules', 'CPOS_Q_Signal_to_LiteFactor_Map']
+  };
+}
+
+/**
+ * Initialize CPOS Lite tables with sample data
+ * Call this function once to set up the Lite tables
+ */
+function INIT_LITE_TABLES() {
+  const ss = cpos_getSS_();
+  Logger.log('Initializing CPOS Lite tables...');
+  
+  // Create CPOS_Lite_Weights sheet
+  let sheet = ss.getSheetByName('CPOS_Lite_Weights');
+  if (!sheet) {
+    sheet = ss.insertSheet('CPOS_Lite_Weights');
+    Logger.log('✅ Created CPOS_Lite_Weights sheet');
+  } else {
+    sheet.clear();
+    Logger.log('⚠️  CPOS_Lite_Weights exists, clearing...');
+  }
+  
+  const wtsHeaders = ['Factor_ID', 'Factor_Category', 'Variable_Name', 'Pathway', 'Sensitivity_Weight_0_10'];
+  const wtsData = [
+    ['AFI', 'Soil', 'al_fe_oxide_index', 'Regenerative Ag', 9],
+    ['AFI', 'Soil', 'al_fe_oxide_index', 'Biochar', 7],
+    ['AFI', 'Soil', 'al_fe_oxide_index', 'ERW', 5]
+  ];
+  sheet.getRange(1, 1, 1, wtsHeaders.length).setValues([wtsHeaders]).setFontWeight('bold');
+  if (wtsData.length > 0) {
+    sheet.getRange(2, 1, wtsData.length, wtsHeaders.length).setValues(wtsData);
+  }
+  
+  // Create CPOS_Lite_Desirability sheet
+  sheet = ss.getSheetByName('CPOS_Lite_Desirability');
+  if (!sheet) {
+    sheet = ss.insertSheet('CPOS_Lite_Desirability');
+    Logger.log('✅ Created CPOS_Lite_Desirability sheet');
+  } else {
+    sheet.clear();
+    Logger.log('⚠️  CPOS_Lite_Desirability exists, clearing...');
+  }
+  
+  const desirHeaders = ['Variable_Name', 'Factor_ID', 'Factor_Category', 'Class_Order', 'Class_Label', 'Pathway', 'Desirability_0_1', 'Shape', 'Pathway_Context'];
+  const desirData = [
+    ['al_fe_oxide_index', 'AFI', 'Soil', 1, 'Low', 'Regenerative Ag', 0.3, '↑', 'Higher Al-Fe oxide index increases mineral surface reactivity and stabilizes organic carbon; higher values generally improve suitability.'],
+    ['al_fe_oxide_index', 'AFI', 'Soil', 2, 'Medium', 'Regenerative Ag', 0.7, '↑', 'Higher Al-Fe oxide index increases mineral surface reactivity and stabilizes organic carbon; higher values generally improve suitability.'],
+    ['al_fe_oxide_index', 'AFI', 'Soil', 3, 'High', 'Regenerative Ag', 1, '↑', 'Higher Al-Fe oxide index increases mineral surface reactivity and stabilizes organic carbon; higher values generally improve suitability.']
+  ];
+  sheet.getRange(1, 1, 1, desirHeaders.length).setValues([desirHeaders]).setFontWeight('bold');
+  if (desirData.length > 0) {
+    sheet.getRange(2, 1, desirData.length, desirHeaders.length).setValues(desirData);
+  }
+  
+  // Create CPOS_Lite_Bounds sheet
+  sheet = ss.getSheetByName('CPOS_Lite_Bounds');
+  if (!sheet) {
+    sheet = ss.insertSheet('CPOS_Lite_Bounds');
+    Logger.log('✅ Created CPOS_Lite_Bounds sheet');
+  } else {
+    sheet.clear();
+    Logger.log('⚠️  CPOS_Lite_Bounds exists, clearing...');
+  }
+  
+  const boundsHeaders = ['Factor_ID', 'Factor_Category', 'Variable_Name', 'Factor_Display_Name', 'Class_Order', 'Class_Label', 'Lower_Bound', 'Upper_Bound', 'Lower_Inclusive', 'Upper_Inclusive', 'Unit'];
+  const boundsData = [
+    ['SI', 'Soil', 'soc_initial', 'SOC (initial)', 1, 'Very Low', 0, 0.3, 'TRUE', 'FALSE', '%'],
+    ['SI', 'Soil', 'soc_initial', 'SOC (initial)', 2, 'Low', 0.3, 0.5, 'TRUE', 'FALSE', '%'],
+    ['SI', 'Soil', 'soc_initial', 'SOC (initial)', 3, 'Medium', 0.5, 0.75, 'TRUE', 'FALSE', '%']
+  ];
+  sheet.getRange(1, 1, 1, boundsHeaders.length).setValues([boundsHeaders]).setFontWeight('bold');
+  if (boundsData.length > 0) {
+    sheet.getRange(2, 1, boundsData.length, boundsHeaders.length).setValues(boundsData);
+  }
+  
+  Logger.log('✅ All CPOS Lite tables initialized successfully!');
+  Logger.log('Please run getCPOSLiteTables() to verify the setup.');
+  
+  return {
+    ok: true,
+    message: 'CPOS Lite tables initialized successfully',
+    sheets: ['CPOS_Lite_Weights', 'CPOS_Lite_Desirability', 'CPOS_Lite_Bounds']
+  };
+}
+
+/**
+ * Initialize ALL CPOS tables (both Lite and Questionnaire)
+ * Run this once to set up a new spreadsheet
+ */
+function INIT_ALL_CPOS_TABLES() {
+  Logger.log('=== Initializing ALL CPOS tables ===');
+  
+  const liteResult = INIT_LITE_TABLES();
+  Logger.log('Lite tables: ' + JSON.stringify(liteResult));
+  
+  const qResult = INIT_QUESTIONNAIRE_SHEETS();
+  Logger.log('Questionnaire tables: ' + JSON.stringify(qResult));
+  
+  Logger.log('=== All CPOS tables initialized ===');
+  Logger.log('Your CPOS system is now ready to use!');
+  
+  return {
+    ok: true,
+    lite: liteResult,
+    questionnaire: qResult,
+    message: 'All CPOS tables initialized successfully. Reload your web app to see the changes.'
   };
 }
