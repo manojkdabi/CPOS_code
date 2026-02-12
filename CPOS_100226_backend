@@ -60,11 +60,16 @@ function cpos_getSS_() {
   if (active) return active;
 
   // Fallback to explicit ID for WebApp/standalone scripts
-  if (CPOS_SS_ID && String(CPOS_SS_ID).trim()) {
+  // Check if ID is set and not the placeholder
+  const hasValidId = CPOS_SS_ID && 
+                     String(CPOS_SS_ID).trim() && 
+                     CPOS_SS_ID !== 'PASTE_YOUR_SPREADSHEET_ID_HERE';
+  
+  if (hasValidId) {
     return SpreadsheetApp.openById(String(CPOS_SS_ID).trim());
   }
 
-  throw new Error('No active spreadsheet. Set CPOS_SS_ID in Code.gs');
+  throw new Error('No active spreadsheet. Set CPOS_SS_ID in Code.gs or use container-bound script.');
 }
 
 
