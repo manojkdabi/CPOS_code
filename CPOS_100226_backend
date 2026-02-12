@@ -29,6 +29,27 @@ function cpos_upsertDraft(p) {
   return cpos_upsertDraft_(p);
 }
 
+/**
+ * PUBLIC API: Manually trigger initialization of all CPOS tables
+ * Can be called from frontend if auto-init fails
+ */
+function manualInitializeAllTables() {
+  try {
+    const result = INIT_ALL_CPOS_TABLES();
+    return {
+      ok: true,
+      result: result,
+      message: 'All tables initialized successfully. Please refresh the page.'
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      error: String(e?.message || e || ''),
+      message: 'Initialization failed. Check the error and try again.'
+    };
+  }
+}
+
 
 // ✅ SET THIS to your CPOS spreadsheet ID (the long string in the URL)
 const CPOS_SS_ID = 'PASTE_YOUR_SPREADSHEET_ID_HERE';
