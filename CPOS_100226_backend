@@ -1393,7 +1393,21 @@ function srvr_getCPOSLiteTables() {
 }
 
 function srvr_getCPOSQuestionnaireConfig() {
-  return getCPOSQuestionnaireConfig();
+    const res = getCPOSQuestionnaireConfig();
+  if (res && typeof res === 'object') return res;
+  return {
+    ok: false,
+    error: 'Questionnaire config returned empty response',
+    bank: [],
+    options: [],
+    derivationRules: [],
+    routingRules: [],
+    signalToLiteMap: [],
+    bounds: [],
+    liteBounds: [],
+    warnings: ['srvr_getCPOSQuestionnaireConfig fallback: empty response from getCPOSQuestionnaireConfig'],
+    meta: null
+  };
 }
 
 
