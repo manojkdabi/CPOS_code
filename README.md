@@ -5,11 +5,17 @@ CPOS code files
 
 If you're seeing "Questionnaire unavailable" and a frozen Start button, follow these steps:
 
+### ⚠️ IMPORTANT: If Sheets Exist But Are Empty
+If you already have the sheets created but they're empty (showing `Factors=0`):
+1. Simply **reload your web app** - the system will now detect empty sheets and populate them
+2. OR manually run `INIT_ALL_CPOS_TABLES()` from Apps Script to force re-initialization
+3. Check Apps Script execution logs (View > Logs) to see if initialization succeeded
+
 ### Option 1: Auto-Initialization (Recommended)
-The system will now **automatically initialize** missing tables when you load the web app. Simply:
+The system will now **automatically initialize** missing OR empty tables when you load the web app. Simply:
 1. Deploy your web app (or reload if already deployed)
 2. Open the web app in your browser
-3. The system will detect missing tables and create them with sample data
+3. The system will detect missing/empty tables and populate them with sample data
 4. Refresh the page to see the questionnaire working
 
 ### Option 2: Manual Initialization

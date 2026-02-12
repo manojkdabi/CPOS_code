@@ -133,6 +133,30 @@ The sample data is just a starting point. To add your own data:
 
 ## Troubleshooting
 
+### Issue: "Factors=0 • Questionnaire unavailable" - Sheets exist but empty
+**Symptoms:** 
+- Console shows `boundsRows: 0, desirRows: 0, weightRows: 0`
+- Console shows `getCPOSQuestionnaireConfig() raw = null`
+- Sheets exist in your spreadsheet but have no data rows (or only headers)
+
+**Solution:**
+The auto-initialization was updated to detect empty sheets and re-populate them. To fix:
+
+1. **Automatic fix (recommended):**
+   - Simply reload your web app
+   - The system will detect empty sheets and populate them with data
+   - Check Apps Script logs (View > Logs) to see initialization messages
+
+2. **Manual fix:**
+   - Open Apps Script Editor
+   - Run `INIT_ALL_CPOS_TABLES()` function
+   - This will clear and re-populate all sheets with sample data
+   - Reload your web app
+
+3. **If sheets are locked or protected:**
+   - Remove protection from the sheets
+   - Then reload or run manual initialization
+
 ### Issue: Tables not created automatically
 **Solution:** Run `INIT_ALL_CPOS_TABLES()` manually from Apps Script
 
