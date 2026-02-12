@@ -773,6 +773,21 @@ function cpos_getTableByAliases_(names) {
  */
 function getCPOSQuestionnaireConfig() {
   try {
+    // Check if questionnaire sheets exist, if not, try to auto-initialize
+    const ss = cpos_getSS_();
+    const hasQBank = ss.getSheetByName('CPOS_Q_Bank') !== null;
+    
+    if (!hasQBank) {
+      Logger.log('[CPOS][Q] Questionnaire sheets missing. Auto-initializing...');
+      try {
+        INIT_QUESTIONNAIRE_SHEETS();
+        Logger.log('[CPOS][Q] Auto-initialization successful');
+      } catch (initErr) {
+        Logger.log('[CPOS][Q] Auto-initialization failed: ' + initErr);
+        // Continue anyway to return empty structure
+      }
+    }
+    
     const bank = cpos_getTableByAliases_(['CPOS_Q_Bank', 'CPOS_QBank']);
     const opts = cpos_getTableByAliases_(['CPOS_Q_Options', 'CPOS_QOptions']);
     const deriv = cpos_getTableByAliases_(['CPOS_Q_Derivation_Rules', 'CPOS_Q_DerivationRules']);
@@ -797,6 +812,11 @@ function getCPOSQuestionnaireConfig() {
 
     if ((normalizedBank || []).length && !normalizedBank.some(r => String(r.QuestionID || r.Question_ID || '').trim())) {
       warnings.push('CPOS_Q_Bank rows found but no QuestionID/Question_ID values were recognized. Check header spelling.');
+    }
+    
+    // Add helpful warning if questionnaire is empty
+    if (normalizedBank.length === 0) {
+      warnings.push('Questionnaire bank is empty. Run INIT_QUESTIONNAIRE_SHEETS() to populate sample data.');
     }
 
     return {
@@ -2069,4 +2089,127 @@ function QUICK_DEBUG() {
   Logger.log(JSON.stringify(debugSpreadsheetContext(), null, 2));
   Logger.log(JSON.stringify(debugTablePeek('CPOS_Lite_Bounds', 2), null, 2));
   Logger.log(JSON.stringify(debugTablePeek('CPOS_Q_Bank', 2), null, 2));
+}
+
+/**
+ * Initialize all questionnaire sheets with sample data
+ * Call this function once to set up the questionnaire system
+ */
+function INIT_QUESTIONNAIRE_SHEETS() {
+  const ss = cpos_getSS_();
+  Logger.log('Initializing questionnaire sheets...');
+  
+  // Create CPOS_Q_Bank sheet
+  let sheet = ss.getSheetByName('CPOS_Q_Bank');
+  if (!sheet) {
+    sheet = ss.insertSheet('CPOS_Q_Bank');
+    Logger.log('✅ Created CPOS_Q_Bank sheet');
+  } else {
+    sheet.clear();
+    Logger.log('⚠️  CPOS_Q_Bank exists, clearing...');
+  }
+  
+  const bankHeaders = ['Question_ID', 'Mode', 'Domain', 'Group_Code', 'Sequence', 'Question_Text_EN', 'Answer_Type', 'Units_Label', 'Help_Text_EN', 'Is_Active', 'Is_Required', 'Min_Answers', 'Max_Answers', 'Confidentiality_Tag', 'Version', 'Question_Text_HI', 'Help_Text_HI', 'Factor_Code', 'Context_Template', 'Base_Priority'];
+  const bankData = [
+    ['Q_S001', 'BASIC', 'SOIL', 'CARBON', 1, 'What is the color of your soil?', 'single_select', '', 'Observe the topsoil (0–15 cm) in daylight and choose the closest color option. If soil is mixed, pick the dominant color.', 'TRUE', 'TRUE', 1, 1, 'LOW', 'v1', 'आपकी मिट्टी का रंग क्या है?', 'दिन की रोशनी में ऊपर की मिट्टी (0–15 सेमी) देखें और सबसे नज़दीकी रंग चुनें। यदि रंग मिला-जुला हो तो जो रंग अधिक दिखे वही चुनें।', 'SI', '', 55],
+    ['Q_S002', 'BASIC', 'SOIL', 'CARBON', 2, 'Have you tested soil organic carbon?', 'single_select', '', 'Select "Yes" if you have a lab report or device test for SOC/OC in the last 3–5 years. Otherwise choose "No/Don\'t know".', 'TRUE', 'TRUE', 1, 1, 'LOW', 'v1', 'क्या आपने मिट्टी के जैविक कार्बन का परीक्षण किया है?', 'यदि पिछले 3–5 वर्षों में SOC/OC की लैब रिपोर्ट या डिवाइस टेस्ट है तो "हाँ" चुनें। नहीं तो "नहीं/पता नहीं" चुनें।', 'SI', '', 60],
+    ['Q_S003', 'ADVANCED', 'SOIL', 'CARBON', 3, 'What is your soil organic carbon percentage?', 'number', '%', 'Enter SOC/OC % from your report (often written as OC% or SOC%). Use the same number as in the report, no conversion unless specified.', 'TRUE', 'FALSE', 0, 1, 'LOW', 'v1', 'आपकी मिट्टी का जैविक कार्बन प्रतिशत क्या है?', 'रिपोर्ट में दिया SOC/OC % दर्ज करें (अक्सर OC% या SOC% लिखा होता है)। जैसा नंबर रिपोर्ट में है वैसा ही डालें, अलग से रूपांतरण न करें।', 'SI', 'You mentioned testing soil organic carbon. What was the percentage?', 70]
+  ];
+  sheet.getRange(1, 1, 1, bankHeaders.length).setValues([bankHeaders]).setFontWeight('bold');
+  if (bankData.length > 0) {
+    sheet.getRange(2, 1, bankData.length, bankHeaders.length).setValues(bankData);
+  }
+  
+  // Create CPOS_Q_Options sheet
+  sheet = ss.getSheetByName('CPOS_Q_Options');
+  if (!sheet) {
+    sheet = ss.insertSheet('CPOS_Q_Options');
+    Logger.log('✅ Created CPOS_Q_Options sheet');
+  } else {
+    sheet.clear();
+    Logger.log('⚠️  CPOS_Q_Options exists, clearing...');
+  }
+  
+  const optsHeaders = ['Question_ID', 'Option_Code', 'Option_Value_Numeric', 'Option_Label_EN', 'Option_Label_HI', 'Option_Order', 'Option_Category', 'Is_Other', 'Other_Placeholder_EN', 'Other_Placeholder_HI', 'Triggers_Probe', 'Probe_ID', 'Derives_Signal_Key', 'Derives_Signal_Value', 'Is_Active', 'Icon', 'Notes'];
+  const optsData = [
+    ['Q_S001', 'COLOR_BLACK', '', 'Dark black/very dark brown', 'गहरा काला/बहुत गहरा भूरा', 1, 'HIGH', 'FALSE', '', '', 'FALSE', '', 'SOC_COLOR_PROXY', 'BLACK', 'TRUE', '⬛', 'High SOC indicator'],
+    ['Q_S001', 'COLOR_BROWN', '', 'Medium brown', 'मध्यम भूरा', 2, 'MEDIUM', 'FALSE', '', '', 'FALSE', '', 'SOC_COLOR_PROXY', 'BROWN', 'TRUE', '🟫', 'Medium SOC'],
+    ['Q_S001', 'COLOR_LIGHT', '', 'Light brown/tan', 'हल्का भूरा', 3, 'LOW', 'FALSE', '', '', 'TRUE', 'PROBE_025', 'SOC_COLOR_PROXY', 'LIGHT', 'TRUE', '⬜', 'Low SOC indicator']
+  ];
+  sheet.getRange(1, 1, 1, optsHeaders.length).setValues([optsHeaders]).setFontWeight('bold');
+  if (optsData.length > 0) {
+    sheet.getRange(2, 1, optsData.length, optsHeaders.length).setValues(optsData);
+  }
+  
+  // Create CPOS_Q_Derivation_Rules sheet
+  sheet = ss.getSheetByName('CPOS_Q_Derivation_Rules');
+  if (!sheet) {
+    sheet = ss.insertSheet('CPOS_Q_Derivation_Rules');
+    Logger.log('✅ Created CPOS_Q_Derivation_Rules sheet');
+  } else {
+    sheet.clear();
+    Logger.log('⚠️  CPOS_Q_Derivation_Rules exists, clearing...');
+  }
+  
+  const derivHeaders = ['Rule_ID', 'Is_Active', 'Priority', 'When_Question_ID', 'When_Operator', 'When_Value', 'Then_Signal_Key', 'Then_Signal_Value', 'Then_Signal_Score', 'Notes'];
+  const derivData = [
+    ['R001', 'TRUE', 10, 'Q_CR001', 'EQUALS', 'RICE_YES', 'SYS_ARCHETYPE', 'RICE_PADDY', 1, 'Rice system detected'],
+    ['R002', 'TRUE', 10, 'Q_S031', 'EQUALS', 'FLOOD_CONT', 'AWD_READINESS', 'LOW', 0.2, 'Continuous flooding reduces AWD readiness'],
+    ['R003', 'TRUE', 10, 'Q_S031', 'EQUALS', 'FLOOD_INT', 'AWD_READINESS', 'MEDIUM', 0.6, 'Intermittent flooding suggests AWD potential']
+  ];
+  sheet.getRange(1, 1, 1, derivHeaders.length).setValues([derivHeaders]).setFontWeight('bold');
+  if (derivData.length > 0) {
+    sheet.getRange(2, 1, derivData.length, derivHeaders.length).setValues(derivData);
+  }
+  
+  // Create CPOS_Q_Routing_Rules sheet
+  sheet = ss.getSheetByName('CPOS_Q_Routing_Rules');
+  if (!sheet) {
+    sheet = ss.insertSheet('CPOS_Q_Routing_Rules');
+    Logger.log('✅ Created CPOS_Q_Routing_Rules sheet');
+  } else {
+    sheet.clear();
+    Logger.log('⚠️  CPOS_Q_Routing_Rules exists, clearing...');
+  }
+  
+  const routeHeaders = ['Route_ID', 'Is_Active', 'Priority', 'Current_Question_ID', 'Condition_Signal_Key', 'Condition_Operator', 'Condition_Value', 'Next_Question_ID', 'Route_Action', 'Probe_Depth', 'Notes'];
+  const routeData = [
+    ['RT001', 'TRUE', 10, 'Q_S002', 'SOC_TESTED', 'EQUALS', 'YES', 'Q_S003', 'ASK', 0, 'User has SOC data - get value'],
+    ['RT002', 'TRUE', 10, 'Q_S002', 'SOC_TESTED', 'EQUALS', 'NO', 'Q_S004', 'SKIP', 0, 'No test - use proxy questions'],
+    ['RT003', 'TRUE', 9, 'Q_S014', 'SAND_TESTED', 'EQUALS', 'YES', 'Q_S015', 'ASK', 0, 'User has sand data - get value']
+  ];
+  sheet.getRange(1, 1, 1, routeHeaders.length).setValues([routeHeaders]).setFontWeight('bold');
+  if (routeData.length > 0) {
+    sheet.getRange(2, 1, routeData.length, routeHeaders.length).setValues(routeData);
+  }
+  
+  // Create CPOS_Q_Signal_to_LiteFactor_Map sheet
+  sheet = ss.getSheetByName('CPOS_Q_Signal_to_LiteFactor_Map');
+  if (!sheet) {
+    sheet = ss.insertSheet('CPOS_Q_Signal_to_LiteFactor_Map');
+    Logger.log('✅ Created CPOS_Q_Signal_to_LiteFactor_Map sheet');
+  } else {
+    sheet.clear();
+    Logger.log('⚠️  CPOS_Q_Signal_to_LiteFactor_Map exists, clearing...');
+  }
+  
+  const mapHeaders = ['Map_ID', 'Is_Active', 'Signal_Key', 'Lite_Variable_Name', 'Mapping_Method', 'When_Signal_Value', 'Then_Lite_Class', 'Confidence_0_1', 'Estimate_Formula', 'Notes'];
+  const mapData = [
+    ['M001', 'TRUE', 'TEXTURE_PROXY', 'clay_fraction', 'DIRECT', 'CLAYEY', 'High', 0.6, '', 'Proxy: clayey soil implies higher clay fraction'],
+    ['M002', 'TRUE', 'TEXTURE_PROXY', 'clay_fraction', 'DIRECT', 'SANDY', 'Low', 0.6, '', 'Proxy: sandy soil implies low clay fraction'],
+    ['M003', 'TRUE', 'TEXTURE_PROXY', 'sand_fraction', 'DIRECT', 'SANDY', 'High', 0.7, '', 'Proxy: sandy soil implies high sand fraction']
+  ];
+  sheet.getRange(1, 1, 1, mapHeaders.length).setValues([mapHeaders]).setFontWeight('bold');
+  if (mapData.length > 0) {
+    sheet.getRange(2, 1, mapData.length, mapHeaders.length).setValues(mapData);
+  }
+  
+  Logger.log('✅ All questionnaire sheets initialized successfully!');
+  Logger.log('Please run getCPOSQuestionnaireConfig() to verify the setup.');
+  
+  return {
+    ok: true,
+    message: 'Questionnaire sheets initialized successfully',
+    sheets: ['CPOS_Q_Bank', 'CPOS_Q_Options', 'CPOS_Q_Derivation_Rules', 'CPOS_Q_Routing_Rules', 'CPOS_Q_Signal_to_LiteFactor_Map']
+  };
 }
