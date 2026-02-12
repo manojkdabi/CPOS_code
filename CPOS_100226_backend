@@ -74,13 +74,21 @@ function cpos_getSS_() {
 function getCPOSLiteTables() {
   const warnings = [];
   
-  // Check if Lite tables exist, if not, try to auto-initialize
+  // Check if Lite tables exist AND have data, if not, try to auto-initialize
   try {
     const ss = cpos_getSS_();
-    const hasBounds = ss.getSheetByName('CPOS_Lite_Bounds') !== null;
+    const boundsSheet = ss.getSheetByName('CPOS_Lite_Bounds');
+    const desirSheet = ss.getSheetByName('CPOS_Lite_Desirability');
+    const wtsSheet = ss.getSheetByName('CPOS_Lite_Weights');
     
-    if (!hasBounds) {
-      Logger.log('[CPOS][Lite] Lite tables missing. Auto-initializing...');
+    // Check if sheets exist AND have data (more than just header row)
+    const boundsHasData = boundsSheet && boundsSheet.getLastRow() > 1;
+    const desirHasData = desirSheet && desirSheet.getLastRow() > 1;
+    const wtsHasData = wtsSheet && wtsSheet.getLastRow() > 1;
+    
+    if (!boundsHasData || !desirHasData || !wtsHasData) {
+      Logger.log('[CPOS][Lite] Lite tables missing or empty. Auto-initializing...');
+      Logger.log('[CPOS][Lite] Bounds has data: ' + boundsHasData + ', Desir has data: ' + desirHasData + ', Weights has data: ' + wtsHasData);
       try {
         INIT_LITE_TABLES();
         Logger.log('[CPOS][Lite] Auto-initialization successful');
@@ -818,12 +826,18 @@ function cpos_getTableByAliases_(names) {
  */
 function getCPOSQuestionnaireConfig() {
   try {
-    // Check if questionnaire sheets exist, if not, try to auto-initialize
+    // Check if questionnaire sheets exist AND have data, if not, try to auto-initialize
     const ss = cpos_getSS_();
-    const hasQBank = ss.getSheetByName('CPOS_Q_Bank') !== null;
+    const qBankSheet = ss.getSheetByName('CPOS_Q_Bank');
+    const qOptsSheet = ss.getSheetByName('CPOS_Q_Options');
     
-    if (!hasQBank) {
-      Logger.log('[CPOS][Q] Questionnaire sheets missing. Auto-initializing...');
+    // Check if sheets exist AND have data (more than just header row)
+    const qBankHasData = qBankSheet && qBankSheet.getLastRow() > 1;
+    const qOptsHasData = qOptsSheet && qOptsSheet.getLastRow() > 1;
+    
+    if (!qBankHasData || !qOptsHasData) {
+      Logger.log('[CPOS][Q] Questionnaire sheets missing or empty. Auto-initializing...');
+      Logger.log('[CPOS][Q] QBank has data: ' + qBankHasData + ', QOpts has data: ' + qOptsHasData);
       try {
         INIT_QUESTIONNAIRE_SHEETS();
         Logger.log('[CPOS][Q] Auto-initialization successful');
