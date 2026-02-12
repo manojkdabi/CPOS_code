@@ -2363,3 +2363,96 @@ function INIT_ALL_CPOS_TABLES() {
     message: 'All CPOS tables initialized successfully. Reload your web app to see the changes.'
   };
 }
+
+/**
+ * TEST: Verify all CPOS tables are properly set up
+ * Run this to check if initialization was successful
+ */
+function TEST_VERIFY_SETUP() {
+  Logger.log('=== VERIFYING CPOS SETUP ===\n');
+  
+  const ss = cpos_getSS_();
+  const requiredSheets = [
+    'CPOS_Lite_Bounds',
+    'CPOS_Lite_Desirability',
+    'CPOS_Lite_Weights',
+    'CPOS_Q_Bank',
+    'CPOS_Q_Options',
+    'CPOS_Q_Derivation_Rules',
+    'CPOS_Q_Routing_Rules',
+    'CPOS_Q_Signal_to_LiteFactor_Map'
+  ];
+  
+  const missing = [];
+  const empty = [];
+  const ok = [];
+  
+  requiredSheets.forEach(name => {
+    const sheet = ss.getSheetByName(name);
+    if (!sheet) {
+      missing.push(name);
+    } else {
+      const lastRow = sheet.getLastRow();
+      if (lastRow <= 1) {
+        empty.push(name);
+      } else {
+        ok.push(name + ' (' + (lastRow - 1) + ' rows)');
+      }
+    }
+  });
+  
+  Logger.log('✅ SHEETS WITH DATA:');
+  ok.forEach(s => Logger.log('  - ' + s));
+  
+  if (empty.length > 0) {
+    Logger.log('\n⚠️  EMPTY SHEETS (only headers):');
+    empty.forEach(s => Logger.log('  - ' + s));
+  }
+  
+  if (missing.length > 0) {
+    Logger.log('\n❌ MISSING SHEETS:');
+    missing.forEach(s => Logger.log('  - ' + s));
+  }
+  
+  // Test API functions
+  Logger.log('\n=== TESTING API FUNCTIONS ===\n');
+  
+  try {
+    const liteResult = getCPOSLiteTables();
+    Logger.log('getCPOSLiteTables():');
+    Logger.log('  ok: ' + liteResult.ok);
+    Logger.log('  bounds rows: ' + (liteResult.bounds || []).length);
+    Logger.log('  desirability rows: ' + (liteResult.desirability || []).length);
+    Logger.log('  weights rows: ' + (liteResult.weights || []).length);
+    Logger.log('  warnings: ' + (liteResult.warnings || []).length);
+  } catch (e) {
+    Logger.log('❌ getCPOSLiteTables() FAILED: ' + e);
+  }
+  
+  try {
+    const qResult = getCPOSQuestionnaireConfig();
+    Logger.log('\ngetCPOSQuestionnaireConfig():');
+    Logger.log('  ok: ' + qResult.ok);
+    Logger.log('  bank rows: ' + (qResult.bank || []).length);
+    Logger.log('  options rows: ' + (qResult.options || []).length);
+    Logger.log('  derivation rules: ' + (qResult.derivationRules || []).length);
+    Logger.log('  routing rules: ' + (qResult.routingRules || []).length);
+    Logger.log('  signal map rows: ' + (qResult.signalToLiteMap || []).length);
+    Logger.log('  warnings: ' + (qResult.warnings || []).length);
+    
+    if (qResult.warnings && qResult.warnings.length > 0) {
+      Logger.log('\n  Warnings:');
+      qResult.warnings.forEach(w => Logger.log('    - ' + w));
+    }
+  } catch (e) {
+    Logger.log('❌ getCPOSQuestionnaireConfig() FAILED: ' + e);
+  }
+  
+  Logger.log('\n=== VERIFICATION COMPLETE ===');
+  
+  if (missing.length === 0 && empty.length === 0) {
+    Logger.log('✅ ALL CHECKS PASSED - System is ready!');
+  } else if (missing.length > 0 || empty.length > 0) {
+    Logger.log('⚠️  ISSUES FOUND - Run INIT_ALL_CPOS_TABLES() to fix');
+  }
+}
